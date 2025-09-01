@@ -1,0 +1,50 @@
+{
+    "manifest_version": 3,
+    "name": "Erado Gmail Export",
+    "description": "Export Gmail emails and attachments to PDF with Erado integration",
+    "version": "0.1.0",
+    "permissions": [
+        "scripting",
+        "activeTab",
+        "storage",
+        "downloads",
+        "identity"
+    ],
+    "host_permissions": [
+        "https://mail.google.com/*",
+        "https://www.googleapis.com/*"
+    ],
+    "oauth2": {
+        "client_id": "YOUR_GOOGLE_CLIENT_ID.apps.googleusercontent.com",
+        "scopes": [
+            "https://www.googleapis.com/auth/gmail.readonly",
+            "https://www.googleapis.com/auth/gmail.modify"
+        ]
+    },
+    "action": {
+        "default_popup": "popup.html",
+        "default_title": "Erado Gmail Export",
+        "default_icon": {
+            "16": "icons/icon16.png",
+            "32": "icons/icon32.png",
+            "64": "icons/icon64.png",
+            "128": "icons/icon128.png"
+        }
+    },
+    "background": {
+        "service_worker": "background.js"
+    },
+    "content_scripts": [
+        {
+            "matches": ["https://mail.google.com/*"],
+            "js": ["content.js"],
+            "run_at": "document_end"
+        }
+    ],
+    "web_accessible_resources": [
+        {
+            "resources": ["icons/*"],
+            "matches": ["https://mail.google.com/*"]
+        }
+    ]
+}
