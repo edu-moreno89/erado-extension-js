@@ -1,4 +1,4 @@
-// Erado Gmail Export - Popup Script
+// Erado Gmail Export - Popup Script (Phase 2)
 document.addEventListener('DOMContentLoaded', function() {
     const statusDiv = document.getElementById('status');
     const emailInfoDiv = document.getElementById('emailInfo');
@@ -11,9 +11,11 @@ document.addEventListener('DOMContentLoaded', function() {
     const exportEmailBtn = document.getElementById('exportEmail');
     const exportAttachmentsBtn = document.getElementById('exportAttachments');
     const exportAllBtn = document.getElementById('exportAll');
+    const authBtn = document.getElementById('authBtn');
     const loadingDiv = document.getElementById('loading');
     
     let currentEmailData = null;
+    let isAuthenticated = false;
     
     // Show status message
     function showStatus(message, type = 'info') {
@@ -31,8 +33,8 @@ document.addEventListener('DOMContentLoaded', function() {
     // Show loading state
     function showLoading(show = true) {
         loadingDiv.style.display = show ? 'block' : 'none';
-        [detectBtn, exportEmailBtn, exportAttachmentsBtn, exportAllBtn].forEach(btn => {
-            btn.disabled = show;
+        [detectBtn, exportEmailBtn, exportAttachmentsBtn, exportAllBtn, authBtn].forEach(btn => {
+            if (btn) btn.disabled = show;
         });
     }
     
@@ -72,6 +74,39 @@ document.addEventListener('DOMContentLoaded', function() {
         showStatus('Email detected successfully!', 'success');
     }
     
+    // Handle authentication
+    async function authenticate() {
+        showLoading(true);
+        showStatus('Authenticating with Gmail...', 'info');
+        
+        try {
+            console.log('Starting authentication...');
+            const response = await chrome.runtime.sendMessage({ action: 'authenticate' });
+            console.log('Authentication response:', response);
+            
+            if (response.success) {
+                isAuthenticated = true;
+                showStatus('Authentication successful!', 'success');
+                // Update auth status display
+                const authStatus = document.getElementById('authStatus');
+                authStatus.className = 'auth-status authenticated';
+                authStatus.innerHTML = '<span>✅ Authenticated</span>';
+            } else {
+                showStatus(`Authentication failed: ${response.error}`, 'error');
+            }
+        } catch (error) {
+            console.error('Authentication error:', error);
+            showStatus(`Authentication error: ${error.message}`, 'error');
+        }
+        
+        showLoading(false);
+    }
+    
+    // Authenticate button event listener
+    authBtn.addEventListener('click', async () => {
+        await authenticate();
+    });
+    
     // Detect email button
     detectBtn.addEventListener('click', async () => {
         showLoading(true);
@@ -108,11 +143,19 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
         
+        // Check authentication for better results
+        if (!isAuthenticated) {
+            const authResult = confirm('For best results, authenticate with Gmail API. Continue without authentication?');
+            if (!authResult) {
+                await authenticate();
+                return;
+            }
+        }
+        
         showLoading(true);
         showStatus('Exporting email as PDF...', 'info');
         
         try {
-            // Send to background script for processing
             const response = await chrome.runtime.sendMessage({
                 action: 'exportEmailPDF',
                 emailData: currentEmailData
@@ -135,6 +178,13 @@ document.addEventListener('DOMContentLoaded', function() {
     exportAttachmentsBtn.addEventListener('click', async () => {
         if (!currentEmailData || !currentEmailData.attachments.length) {
             showStatus('No attachments to download', 'error');
+            return;
+        }
+        
+        // Require authentication for real attachment downloads
+        if (!isAuthenticated) {
+            showStatus('Authentication required for attachment downloads', 'info');
+            await authenticate();
             return;
         }
         
@@ -165,6 +215,12 @@ document.addEventListener('DOMContentLoaded', function() {
         if (!currentEmailData) {
             showStatus('Please detect an email first', 'error');
             return;
+        }
+        
+        // Check authentication
+        if (!isAuthenticated) {
+            showStatus('Authenticating for full export...', 'info');
+            await authenticate();
         }
         
         showLoading(true);

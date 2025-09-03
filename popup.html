@@ -31,6 +31,27 @@
             opacity: 0.8;
         }
         
+        .auth-status {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            padding: 8px 12px;
+            margin-bottom: 16px;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        
+        .auth-status.authenticated {
+            background: rgba(76, 175, 80, 0.2);
+            border: 1px solid rgba(76, 175, 80, 0.3);
+        }
+        
+        .auth-status.not-authenticated {
+            background: rgba(255, 193, 7, 0.2);
+            border: 1px solid rgba(255, 193, 7, 0.3);
+        }
+        
         .status {
             background: rgba(255, 255, 255, 0.1);
             border-radius: 8px;
@@ -143,6 +164,11 @@
     <div class="header">
         <h1>Erado Gmail Export</h1>
         <p>Export emails and attachments to PDF</p>
+    </div>
+    
+    <div id="authStatus" class="auth-status not-authenticated">
+        <span>🔒 Not authenticated</span>
+        <button id="authBtn" class="btn btn-secondary" style="width: auto; padding: 4px 8px; font-size: 12px;">Authenticate</button>
     </div>
     
     <div id="status" class="status" style="display: none;"></div>
