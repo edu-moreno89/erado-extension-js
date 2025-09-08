@@ -1,5 +1,5 @@
-// Erado Gmail Export - Background Service Worker (Phase 2)
-console.log('Erado Gmail Export background script loaded (Phase 2)');
+// Erado Gmail Export - Background Service Worker (Phase 2 - PDF Complete)
+console.log('Erado Gmail Export background script loaded (Phase 2 - PDF Complete)');
 
 // Gmail API configuration
 const GMAIL_API_BASE = 'https://gmail.googleapis.com/gmail/v1/users/me';
@@ -146,143 +146,29 @@ async function downloadAttachment(messageId, attachmentId, filename) {
     }
 }
 
-// Generate PDF from email content
+// Generate PDF using content script approach
 async function generatePDF(emailData) {
     try {
-        console.log('Generating PDF for:', emailData.subject);
+        console.log('Generating PDF using content script for:', emailData.subject);
         
-        // Create HTML content for PDF
-        const htmlContent = `
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="utf-8">
-    <title>${emailData.subject}</title>
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            line-height: 1.6;
-            color: #333;
-            max-width: 800px;
-            margin: 0 auto;
-            padding: 20px;
-        }
-        .header {
-            border-bottom: 2px solid #667eea;
-            padding-bottom: 20px;
-            margin-bottom: 30px;
-        }
-        .subject {
-            font-size: 24px;
-            font-weight: bold;
-            color: #667eea;
-            margin-bottom: 10px;
-        }
-        .meta {
-            color: #666;
-            font-size: 14px;
-        }
-        .meta span {
-            margin-right: 20px;
-        }
-        .body {
-            margin-top: 30px;
-        }
-        .attachments {
-            margin-top: 30px;
-            padding-top: 20px;
-            border-top: 1px solid #eee;
-        }
-        .attachment-item {
-            background: #f5f5f5;
-            padding: 10px;
-            margin: 5px 0;
-            border-radius: 5px;
-        }
-        .footer {
-            margin-top: 40px;
-            padding-top: 20px;
-            border-top: 1px solid #eee;
-            font-size: 12px;
-            color: #999;
-            text-align: center;
-        }
-    </style>
-</head>
-<body>
-    <div class="header">
-        <div class="subject">${emailData.subject}</div>
-        <div class="meta">
-            <span><strong>From:</strong> ${emailData.sender}</span>
-            <span><strong>Date:</strong> ${emailData.date}</span>
-            <span><strong>URL:</strong> ${emailData.url}</span>
-        </div>
-    </div>
-    
-    <div class="body">
-        ${emailData.body}
-    </div>
-    
-    ${emailData.attachments && emailData.attachments.length > 0 ? `
-    <div class="attachments">
-        <h3>Attachments (${emailData.attachments.length})</h3>
-        ${emailData.attachments.map(att => `
-            <div class="attachment-item">
-                <strong>${att.name}</strong>
-                ${att.size ? ` (${att.size})` : ''}
-                ${att.type ? ` - ${att.type}` : ''}
-            </div>
-        `).join('')}
-    </div>
-    ` : ''}
-    
-    <div class="footer">
-        <p>Exported by Erado Gmail Export on ${new Date().toLocaleString()}</p>
-    </div>
-</body>
-</html>`;
-
-        // For now, create a text file as placeholder
-        // In production, you'd use a PDF generation library like jsPDF or html2pdf
-        const content = `
-ERADO GMAIL EXPORT - PDF
-========================
-
-Subject: ${emailData.subject}
-From: ${emailData.sender}
-Date: ${emailData.date}
-URL: ${emailData.url}
-
-BODY:
-${emailData.body}
-
-ATTACHMENTS:
-${emailData.attachments.map(att => `- ${att.name} (${att.size})`).join('\n')}
-
-Exported on: ${new Date().toISOString()}
-        `.trim();
+        // Get the active tab
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
         
-        // Create blob and convert to data URL for service worker compatibility
-        const blob = new Blob([content], { type: 'text/plain' });
+        if (!tab) {
+            throw new Error('No active tab found');
+        }
         
-        // Use FileReader to convert blob to data URL
-        const reader = new FileReader();
-        return new Promise((resolve, reject) => {
-            reader.onload = async () => {
-                try {
-                    await chrome.downloads.download({
-                        url: reader.result,
-                        filename: `erado-export-${sanitizeFilename(emailData.subject)}.txt`,
-                        saveAs: true
-                    });
-                    resolve({ success: true });
-                } catch (error) {
-                    reject(error);
-                }
-            };
-            reader.onerror = reject;
-            reader.readAsDataURL(blob);
+        // Send message to content script to generate PDF
+        const response = await chrome.tabs.sendMessage(tab.id, {
+            action: 'generatePDF',
+            emailData: emailData
         });
+        
+        if (response && response.success) {
+            return { success: true };
+        } else {
+            throw new Error(response?.error || 'PDF generation failed');
+        }
         
     } catch (error) {
         console.error('Error generating PDF:', error);
