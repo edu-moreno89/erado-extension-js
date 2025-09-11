@@ -15,7 +15,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             break;
             
         case 'exportEmailPDF':
-            handleExportEmailPDF(message.emailData, sendResponse);
+            // Completely ignore PDF generation - handled by content script
+            console.log('PDF generation ignored by background script');
+            sendResponse({ error: 'PDF generation handled by content script' });
             break;
             
         case 'downloadAttachments':
@@ -45,35 +47,12 @@ async function handleAuthentication(sendResponse) {
     }
 }
 
-// Export email as PDF
+// Export email as PDF - DISABLED to prevent double windows
 async function handleExportEmailPDF(emailData, sendResponse) {
-    try {
-        console.log('Exporting email as PDF:', emailData.subject);
-        
-        // Get the active tab
-        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-        
-        if (!tab) {
-            sendResponse({ error: 'No active tab found' });
-            return;
-        }
-        
-        // Send message to content script to generate PDF
-        const response = await chrome.tabs.sendMessage(tab.id, {
-            action: 'generatePDF',
-            data: emailData
-        });
-        
-        if (response && response.success) {
-            sendResponse({ success: true, filename: response.filename });
-        } else {
-            sendResponse({ error: response?.error || 'PDF generation failed' });
-        }
-        
-    } catch (error) {
-        console.error('Error exporting email PDF:', error);
-        sendResponse({ error: error.message });
-    }
+    // This function is disabled to prevent double windows
+    // PDF generation is now handled directly by content script
+    console.log('PDF generation bypassed - handled by content script');
+    sendResponse({ error: 'PDF generation handled by content script' });
 }
 
 // Download attachments
@@ -119,20 +98,15 @@ async function handleDownloadAttachments(emailData, sendResponse) {
     }
 }
 
-// Export all (email + attachments)
+// Export all (email + attachments) - Updated to skip PDF
 async function handleExportAll(emailData, sendResponse) {
     try {
         console.log('Exporting all for:', emailData.subject);
         
-        // Export email first
-        const emailResult = await handleExportEmailPDF(emailData, (response) => response);
+        // Skip PDF generation - handled by content script
+        console.log('PDF generation skipped - handled by content script');
         
-        if (!emailResult.success) {
-            sendResponse({ error: emailResult.error });
-            return;
-        }
-        
-        // Then download attachments if any
+        // Only download attachments if any
         if (emailData.attachments && emailData.attachments.length > 0) {
             const attachmentResult = await handleDownloadAttachments(emailData, (response) => response);
             

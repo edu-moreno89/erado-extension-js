@@ -162,6 +162,11 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
         
+        // Prevent multiple clicks
+        if (exportEmailBtn.disabled) {
+            return;
+        }
+        
         showLoading(true);
         showStatus('Exporting email as PDF...', 'info');
         
@@ -175,14 +180,18 @@ document.addEventListener('DOMContentLoaded', function() {
                 return;
             }
             
-            // Send message directly to content script (not background)
+            console.log('Sending PDF generation request to content script');
+            
+            // Send message directly to content script ONLY (not background)
             const response = await chrome.tabs.sendMessage(tab.id, {
                 action: 'generatePDF',
                 data: currentEmailData
             });
             
+            console.log('PDF generation response:', response);
+            
             if (response.success) {
-                showStatus('PDF window opened! Click the print button to save as PDF.', 'success');
+                showStatus('PDF exported automatically! Check your downloads folder.', 'success');
             } else {
                 showStatus(`Export failed: ${response.error}`, 'error');
             }

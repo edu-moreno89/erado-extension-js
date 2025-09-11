@@ -238,21 +238,7 @@ async function generatePDFDirectly(emailData) {
             body { margin: 0; }
             .no-print { display: none; }
         }
-        .print-button {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            background: #667eea;
-            color: white;
-            border: none;
-            padding: 10px 20px;
-            border-radius: 5px;
-            cursor: pointer;
-            font-size: 14px;
-            z-index: 1000;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
-        }
-        .instructions {
+        .status {
             position: fixed;
             top: 20px;
             left: 20px;
@@ -303,17 +289,9 @@ async function generatePDFDirectly(emailData) {
         Exported by Erado Gmail Export on ${new Date().toLocaleString()}
     </div>
     
-    <button class="print-button" id="printBtn">
-        🖨️ Print as PDF
-    </button>
-    
-    <div class="instructions">
-        <strong>📄 PDF Export Ready!</strong><br><br>
-        1. Click "Print as PDF" button<br>
-        2. Choose "Save as PDF" in print dialog<br>
-        3. Select your desired folder<br>
-        4. Click "Save"<br><br>
-        <em>Window will close automatically after printing.</em>
+    <div class="status" id="status">
+        <strong>📄 Auto-Exporting PDF...</strong><br><br>
+        Please wait while we prepare your PDF...
     </div>
 </body>
 </html>`;
@@ -322,18 +300,40 @@ async function generatePDFDirectly(emailData) {
         printWindow.document.write(htmlContent);
         printWindow.document.close();
         
-        // Add event listener after content is loaded
+        // Auto-print after content loads
         printWindow.addEventListener('load', function() {
-            const printBtn = printWindow.document.getElementById('printBtn');
-            if (printBtn) {
-                printBtn.addEventListener('click', function() {
-                    console.log('Print button clicked');
-                    printWindow.print();
-                    setTimeout(() => {
-                        printWindow.close();
-                    }, 1000);
-                });
+            console.log('Window loaded, starting auto-print');
+            
+            // Update status
+            const statusDiv = printWindow.document.getElementById('status');
+            if (statusDiv) {
+                statusDiv.innerHTML = '<strong>🖨️ Printing PDF...</strong><br><br>Print dialog will open automatically...';
             }
+            
+            // Wait a bit for content to render, then auto-print
+            setTimeout(() => {
+                try {
+                    console.log('Triggering auto-print');
+                    printWindow.print();
+                    
+                    // Update status
+                    if (statusDiv) {
+                        statusDiv.innerHTML = '<strong>✅ PDF Export Complete!</strong><br><br>Window will close automatically...';
+                    }
+                    
+                    // Close window after print
+                    setTimeout(() => {
+                        console.log('Closing window');
+                        printWindow.close();
+                    }, 2000);
+                    
+                } catch (error) {
+                    console.error('Auto-print failed:', error);
+                    if (statusDiv) {
+                        statusDiv.innerHTML = '<strong>❌ Auto-print failed</strong><br><br>Please use Ctrl+P to print manually.';
+                    }
+                }
+            }, 1000);
         });
         
         return { success: true, filename: `erado-export-${sanitizeFilename(emailData.subject)}.pdf` };
