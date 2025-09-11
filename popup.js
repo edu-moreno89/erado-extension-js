@@ -121,6 +121,20 @@ document.addEventListener('DOMContentLoaded', function() {
                 return;
             }
             
+            // Try to inject content script if it's not loaded
+            try {
+                await chrome.scripting.executeScript({
+                    target: { tabId: tab.id },
+                    files: ['content.js']
+                });
+                console.log('Content script injected');
+            } catch (injectError) {
+                console.log('Content script already loaded or injection failed:', injectError);
+            }
+            
+            // Wait a bit for script to load
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
             const response = await chrome.tabs.sendMessage(tab.id, { action: 'getEmail' });
             
             if (response) {
@@ -130,7 +144,12 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         } catch (error) {
             console.error('Error detecting email:', error);
-            showStatus('Error detecting email. Please refresh the page and try again.', 'error');
+            
+            if (error.message.includes('Could not establish connection')) {
+                showStatus('Content script not loaded. Please refresh the Gmail page and try again.', 'error');
+            } else {
+                showStatus('Error detecting email. Please refresh the page and try again.', 'error');
+            }
         }
         
         showLoading(false);
@@ -143,26 +162,27 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
         
-        // Check authentication for better results
-        if (!isAuthenticated) {
-            const authResult = confirm('For best results, authenticate with Gmail API. Continue without authentication?');
-            if (!authResult) {
-                await authenticate();
-                return;
-            }
-        }
-        
         showLoading(true);
         showStatus('Exporting email as PDF...', 'info');
         
         try {
-            const response = await chrome.runtime.sendMessage({
-                action: 'exportEmailPDF',
-                emailData: currentEmailData
+            // Get the active tab
+            const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+            
+            if (!tab.url.includes('mail.google.com')) {
+                showStatus('Please open Gmail first', 'error');
+                showLoading(false);
+                return;
+            }
+            
+            // Send message directly to content script (not background)
+            const response = await chrome.tabs.sendMessage(tab.id, {
+                action: 'generatePDF',
+                data: currentEmailData
             });
             
             if (response.success) {
-                showStatus('Email exported successfully!', 'success');
+                showStatus('PDF window opened! Click the print button to save as PDF.', 'success');
             } else {
                 showStatus(`Export failed: ${response.error}`, 'error');
             }

@@ -1,4 +1,4 @@
-// Erado Gmail Export - Content Script (Debug Version)
+// Erado Gmail Export - Content Script
 console.log("Erado Gmail Export content script loaded at:", new Date().toISOString());
 
 // Simple email detection function
@@ -17,87 +17,133 @@ function getOpenEmail() {
         console.log("Email container found:", !!emailContainer);
         
         if (!emailContainer) {
+            console.log("No email container found");
             return { error: "No email container found - please open an email" };
         }
 
+        // Try multiple selectors for email content
+        let emailContent = null;
+        const contentSelectors = [
+            '.a3s.aiL', // Gmail email body
+            '[role="listitem"] .a3s', // Alternative email body
+            '.email-body', // Generic email body
+            '.message-content', // Generic message content
+            '[data-thread-id] .a3s', // Thread-based email body
+            '.thread-content', // Thread content
+            '.email-content', // Generic email content
+            '.yW .y2', // Gmail content area
+            '.yW .yP' // Gmail content area alternative
+        ];
+        
+        for (const selector of contentSelectors) {
+            const element = document.querySelector(selector);
+            if (element && element.textContent.trim()) {
+                emailContent = element;
+                console.log("Found email content with selector:", selector);
+                break;
+            }
+        }
+        
+        if (!emailContent) {
+            console.log("No email content found with any selector");
+            // Try to get any text content from the main area
+            const mainArea = document.querySelector('[role="main"]');
+            if (mainArea && mainArea.textContent.trim()) {
+                emailContent = mainArea;
+                console.log("Using main area as email content");
+            } else {
+                return { error: "No email content found" };
+            }
+        }
+
         // Try multiple selectors for subject
-        let subject = null;
+        let subject = 'No Subject';
         const subjectSelectors = [
-            "h2.hP",
-            "[data-legacy-thread-id] h2",
-            ".thread-subject",
-            "h1",
-            ".subject"
+            'h2.hP', // Gmail subject
+            '[data-legacy-thread-id] h2', // Alternative subject
+            '.thread-subject', // Thread subject
+            'h1', // Generic heading
+            '.subject', // Generic subject
+            '[data-thread-perm-id] h2', // Thread perm ID subject
+            '.yW h2', // Gmail subject alternative
+            '.yW .yP' // Gmail subject area
         ];
         
         for (const selector of subjectSelectors) {
             const element = document.querySelector(selector);
-            if (element && element.innerText.trim()) {
-                subject = element.innerText.trim();
+            if (element && element.textContent.trim()) {
+                subject = element.textContent.trim();
                 console.log("Found subject with selector:", selector, subject);
                 break;
             }
         }
 
         // Try multiple selectors for sender
-        let sender = null;
+        let sender = 'Unknown Sender';
         const senderSelectors = [
-            ".gD",
-            ".yW span[email]",
-            ".sender-name",
-            "[data-email]"
+            '.gD', // Gmail sender
+            '.yW span[email]', // Alternative sender
+            '.sender-name', // Generic sender name
+            '[data-email]', // Data email attribute
+            '[data-sender-name]', // Data sender name
+            '.yW .yP', // Gmail sender name
+            '.yW .y2', // Gmail sender email
+            '.yW span' // Gmail sender span
         ];
         
         for (const selector of senderSelectors) {
             const element = document.querySelector(selector);
-            if (element && element.innerText.trim()) {
-                sender = element.innerText.trim();
+            if (element && element.textContent.trim()) {
+                sender = element.textContent.trim();
                 console.log("Found sender with selector:", selector, sender);
                 break;
             }
         }
 
-        // Get email body
-        let body = "";
-        const bodySelectors = [
-            ".a3s.aiL",
-            ".email-body",
-            "[role='listitem'] .a3s"
+        // Try multiple selectors for date
+        let date = new Date().toLocaleDateString();
+        const dateSelectors = [
+            '.date', // Generic date
+            '[data-date]', // Data date attribute
+            '.yW .y2', // Gmail date
+            '.yW .yP', // Gmail date alternative
+            '.thread-date' // Thread date
         ];
         
-        for (const selector of bodySelectors) {
+        for (const selector of dateSelectors) {
             const element = document.querySelector(selector);
-            if (element) {
-                body = element.innerText || element.innerHTML;
-                console.log("Found body with selector:", selector);
+            if (element && element.textContent.trim()) {
+                date = element.textContent.trim();
+                console.log("Found date with selector:", selector, date);
                 break;
             }
         }
 
-        // Get attachments
-        const attachmentElements = document.querySelectorAll(".aZo, .attachment");
-        const attachments = Array.from(attachmentElements).map(att => ({
-            name: att.querySelector(".aZo-name, .attachment-name")?.innerText || "Unknown",
-            size: att.querySelector(".aZo-size, .attachment-size")?.innerText || "",
-            type: att.querySelector(".aZo-type, .attachment-type")?.innerText || ""
+        // Get email body
+        const body = emailContent.textContent?.trim() || 'No content found';
+        
+        // Extract attachments
+        const attachmentElements = document.querySelectorAll('.aZo, .attachment, .file-attachment, [data-attachment-id]');
+        const attachments = Array.from(attachmentElements).map(el => ({
+            name: el.querySelector('.aZo-name, .attachment-name')?.textContent?.trim() || 
+                  el.textContent?.trim() || 'Unknown Attachment',
+            size: el.querySelector('.aZo-size, .attachment-size')?.textContent?.trim() || 
+                  el.getAttribute('data-size') || 'Unknown Size',
+            type: el.querySelector('.aZo-type, .attachment-type')?.textContent?.trim() || 
+                  el.getAttribute('data-type') || 'Unknown Type'
         }));
 
-        console.log("Found attachments:", attachments.length);
-
-        const result = {
-            subject: subject || "No subject found",
-            sender: sender || "Unknown sender",
-            recipient: "",
-            date: new Date().toLocaleDateString(),
-            body: body || "No body found",
+        console.log("Email detected:", { subject, sender, date, attachments: attachments.length });
+        
+        return {
+            success: true,
+            subject: subject,
+            sender: sender,
+            date: date,
+            body: body,
             attachments: attachments,
-            emailId: "debug-" + Date.now(),
-            url: window.location.href,
-            timestamp: new Date().toISOString()
+            url: window.location.href
         };
-
-        console.log("Email data extracted:", result);
-        return result;
         
     } catch (error) {
         console.error("Error in getOpenEmail:", error);
@@ -105,53 +151,232 @@ function getOpenEmail() {
     }
 }
 
-// Message listener with better error handling
-chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-    console.log("Content script received message:", msg);
+// Generate PDF using Chrome's native print functionality
+async function generatePDFDirectly(emailData) {
+    try {
+        console.log("Generating PDF for:", emailData.subject);
+        
+        // Create a new window with styled content
+        const printWindow = window.open('', '_blank', 'width=800,height=600');
+        
+        const htmlContent = `
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>${emailData.subject}</title>
+    <style>
+        @page {
+            margin: 20mm;
+            size: A4;
+        }
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            margin: 0;
+            padding: 20px;
+        }
+        .header {
+            border-bottom: 3px solid #667eea;
+            padding-bottom: 20px;
+            margin-bottom: 30px;
+        }
+        .brand {
+            font-size: 24px;
+            font-weight: bold;
+            color: #667eea;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+        .subject {
+            font-size: 18px;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 15px;
+        }
+        .meta {
+            color: #666;
+            font-size: 12px;
+            margin-bottom: 10px;
+        }
+        .meta-row {
+            margin-bottom: 5px;
+        }
+        .meta-label {
+            font-weight: bold;
+            display: inline-block;
+            width: 60px;
+        }
+        .body {
+            margin-top: 30px;
+            font-size: 12px;
+            line-height: 1.5;
+            white-space: pre-wrap;
+        }
+        .attachments {
+            margin-top: 30px;
+            padding-top: 20px;
+            border-top: 1px solid #eee;
+        }
+        .attachment-item {
+            background: #f5f5f5;
+            padding: 8px;
+            margin: 5px 0;
+            border-radius: 4px;
+            font-size: 11px;
+        }
+        .footer {
+            margin-top: 40px;
+            padding-top: 20px;
+            border-top: 1px solid #eee;
+            font-size: 10px;
+            color: #999;
+            text-align: center;
+        }
+        @media print {
+            body { margin: 0; }
+            .no-print { display: none; }
+        }
+        .print-button {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: #667eea;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            z-index: 1000;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+        }
+        .instructions {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            background: #f0f8ff;
+            border: 2px solid #667eea;
+            padding: 15px;
+            border-radius: 5px;
+            font-size: 14px;
+            z-index: 1000;
+            max-width: 300px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <div class="brand">ERADO GMAIL EXPORT</div>
+        <div class="subject">${emailData.subject}</div>
+        <div class="meta">
+            <div class="meta-row">
+                <span class="meta-label">From:</span> ${emailData.sender}
+            </div>
+            <div class="meta-row">
+                <span class="meta-label">Date:</span> ${emailData.date}
+            </div>
+            <div class="meta-row">
+                <span class="meta-label">URL:</span> ${emailData.url}
+            </div>
+        </div>
+    </div>
+    
+    <div class="body">
+        <strong>Email Content:</strong><br><br>
+        ${emailData.body}
+    </div>
+    
+    ${emailData.attachments && emailData.attachments.length > 0 ? `
+    <div class="attachments">
+        <strong>Attachments (${emailData.attachments.length}):</strong><br><br>
+        ${emailData.attachments.map(att => `
+            <div class="attachment-item">
+                • ${att.name}${att.size ? ` (${att.size})` : ''}${att.type ? ` - ${att.type}` : ''}
+            </div>
+        `).join('')}
+    </div>
+    ` : ''}
+    
+    <div class="footer">
+        Exported by Erado Gmail Export on ${new Date().toLocaleString()}
+    </div>
+    
+    <button class="print-button" id="printBtn">
+        🖨️ Print as PDF
+    </button>
+    
+    <div class="instructions">
+        <strong>📄 PDF Export Ready!</strong><br><br>
+        1. Click "Print as PDF" button<br>
+        2. Choose "Save as PDF" in print dialog<br>
+        3. Select your desired folder<br>
+        4. Click "Save"<br><br>
+        <em>Window will close automatically after printing.</em>
+    </div>
+</body>
+</html>`;
+        
+        // Write content to new window
+        printWindow.document.write(htmlContent);
+        printWindow.document.close();
+        
+        // Add event listener after content is loaded
+        printWindow.addEventListener('load', function() {
+            const printBtn = printWindow.document.getElementById('printBtn');
+            if (printBtn) {
+                printBtn.addEventListener('click', function() {
+                    console.log('Print button clicked');
+                    printWindow.print();
+                    setTimeout(() => {
+                        printWindow.close();
+                    }, 1000);
+                });
+            }
+        });
+        
+        return { success: true, filename: `erado-export-${sanitizeFilename(emailData.subject)}.pdf` };
+        
+    } catch (error) {
+        console.error('Error generating PDF:', error);
+        return { error: error.message };
+    }
+}
+
+// Sanitize filename
+function sanitizeFilename(filename) {
+    return filename
+        .replace(/[<>:"/\\|?*]/g, '_')
+        .replace(/\s+/g, '_')
+        .substring(0, 50);
+}
+
+// Listen for messages from popup
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    console.log("Content script received message:", message.action);
     
     try {
-        switch (msg.action) {
-            case "getEmail":
-                console.log("Processing getEmail request");
-                const emailData = getOpenEmail();
-                console.log("Sending response:", emailData);
-                sendResponse(emailData);
-                break;
-                
-            case "checkGmailPage":
-                const isGmail = window.location.hostname === 'mail.google.com';
-                const hasEmail = !!document.querySelector('[role="main"]');
-                console.log("Page check - isGmail:", isGmail, "hasEmail:", hasEmail);
-                sendResponse({ isGmail, hasEmail });
-                break;
-                
-            case "getPageInfo":
-                const pageInfo = {
-                    url: window.location.href,
-                    title: document.title,
-                    isGmail: window.location.hostname === 'mail.google.com'
-                };
-                console.log("Page info:", pageInfo);
-                sendResponse(pageInfo);
-                break;
-                
-            case "generatePDF":
-                // Generate PDF directly
-                generatePDFDirectly(msg.emailData)
-                    .then(result => {
-                        console.log('PDF generation result:', result);
-                        sendResponse(result);
-                    })
-                    .catch(error => {
-                        console.error('PDF generation error:', error);
-                        sendResponse({ success: false, error: error.message });
-                    });
-                return true; // Keep message channel open for async response
-                break;
-                
-            default:
-                console.log("Unknown action:", msg.action);
-                sendResponse({ error: "Unknown action: " + msg.action });
+        if (message.action === 'getOpenEmail' || message.action === 'getEmail') {
+            console.log("Processing email detection request");
+            const result = getOpenEmail();
+            console.log("Sending response:", result);
+            sendResponse(result);
+        } else if (message.action === 'generatePDF' || message.action === 'generatePDFFromContent') {
+            console.log("Processing PDF generation request");
+            generatePDFDirectly(message.data)
+                .then(result => {
+                    console.log("PDF generation result:", result);
+                    sendResponse(result);
+                })
+                .catch(error => {
+                    console.error("PDF generation error:", error);
+                    sendResponse({ error: error.message });
+                });
+            return true; // Keep message channel open
+        } else {
+            console.log("Unknown action:", message.action);
+            sendResponse({ error: "Unknown action: " + message.action });
         }
     } catch (error) {
         console.error("Error in message listener:", error);
@@ -160,36 +385,3 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     
     return true; // Keep message channel open
 });
-
-// Test function that can be called from console
-window.testEradoExtension = function() {
-    console.log("Testing Erado extension...");
-    const result = getOpenEmail();
-    console.log("Test result:", result);
-    return result;
-};
-
-// Real PDF Generation using jsPDF
-async function generatePDFDirectly(emailData) {
-    try {
-        console.log('Generating real PDF for:', emailData.subject);
-        
-        // Use the PDF generator
-        await window.pdfGenerator.generatePDF(emailData);
-        
-        return { success: true };
-    } catch (error) {
-        console.error('Error generating PDF:', error);
-        throw error;
-    }
-}
-
-// Helper function to sanitize filename
-function sanitizeFilename(filename) {
-    return filename
-        .replace(/[<>:"/\\|?*]/g, '_')
-        .replace(/\s+/g, '_')
-        .substring(0, 50);
-}
-
-console.log("Content script setup complete");
