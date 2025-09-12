@@ -1,4 +1,4 @@
-// Erado Gmail Export - Popup Script (Phase 2)
+// Erado Gmail Export - Popup Script
 document.addEventListener('DOMContentLoaded', function() {
     const statusDiv = document.getElementById('status');
     const emailInfoDiv = document.getElementById('emailInfo');
@@ -11,11 +11,11 @@ document.addEventListener('DOMContentLoaded', function() {
     const exportEmailBtn = document.getElementById('exportEmail');
     const exportAttachmentsBtn = document.getElementById('exportAttachments');
     const exportAllBtn = document.getElementById('exportAll');
-    const authBtn = document.getElementById('authBtn');
     const loadingDiv = document.getElementById('loading');
     
     let currentEmailData = null;
     let isAuthenticated = false;
+    let accessToken = null;
     
     // Show status message
     function showStatus(message, type = 'info') {
@@ -33,7 +33,7 @@ document.addEventListener('DOMContentLoaded', function() {
     // Show loading state
     function showLoading(show = true) {
         loadingDiv.style.display = show ? 'block' : 'none';
-        [detectBtn, exportEmailBtn, exportAttachmentsBtn, exportAllBtn, authBtn].forEach(btn => {
+        [detectBtn, exportEmailBtn, exportAttachmentsBtn, exportAllBtn].forEach(btn => {
             if (btn) btn.disabled = show;
         });
     }
@@ -74,38 +74,52 @@ document.addEventListener('DOMContentLoaded', function() {
         showStatus('Email detected successfully!', 'success');
     }
     
-    // Handle authentication
+    // Simple authentication function
     async function authenticate() {
-        showLoading(true);
-        showStatus('Authenticating with Gmail...', 'info');
-        
         try {
-            console.log('Starting authentication...');
-            const response = await chrome.runtime.sendMessage({ action: 'authenticate' });
-            console.log('Authentication response:', response);
+            console.error('Starting authentication...');
             
-            if (response.success) {
+            // Clear any cached tokens first
+            await chrome.identity.clearAllCachedAuthTokens();
+            
+            // Get token interactively
+            const token = await chrome.identity.getAuthToken({ interactive: true });
+            
+            console.error('Token received:', token ? 'success' : 'failed');
+            console.error('Token type:', typeof token);
+            console.info(token);
+            console.error('Token length:', token ? token.length : 'undefined');
+            
+            if (token && token.token && token.token.length > 0) {
+                accessToken = token.token;
                 isAuthenticated = true;
-                showStatus('Authentication successful!', 'success');
-                // Update auth status display
-                const authStatus = document.getElementById('authStatus');
-                authStatus.className = 'auth-status authenticated';
-                authStatus.innerHTML = '<span>✅ Authenticated</span>';
+                console.log('Authentication successful, token length:', token.token.length);
+                try {
+                    const response = await chrome.runtime.sendMessage({
+                        action: 'setToken',
+                        token: accessToken
+                    });
+                    
+                    if (response && response.success) {
+                        console.log('Token sent to background script successfully');
+                        return true;
+                    } else {
+                        console.error('Failed to send token to background script');
+                        return false;
+                    }
+                } catch (error) {
+                    console.error('Error sending token to background script:', error);
+                    return false;
+                }
             } else {
-                showStatus(`Authentication failed: ${response.error}`, 'error');
+                console.error('No valid token received:', token);
+                return false;
             }
         } catch (error) {
             console.error('Authentication error:', error);
-            showStatus(`Authentication error: ${error.message}`, 'error');
+            return false;
         }
-        
-        showLoading(false);
     }
-    
-    // Authenticate button event listener
-    authBtn.addEventListener('click', async () => {
-        await authenticate();
-    });
     
     // Detect email button
     detectBtn.addEventListener('click', async () => {
@@ -162,11 +176,8 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
         
-        // Prevent multiple clicks
-        if (exportEmailBtn.disabled) {
-            return;
-        }
-        
+        // Disable button immediately to prevent multiple clicks
+        exportEmailBtn.disabled = true;
         showLoading(true);
         showStatus('Exporting email as PDF...', 'info');
         
@@ -177,6 +188,7 @@ document.addEventListener('DOMContentLoaded', function() {
             if (!tab.url.includes('mail.google.com')) {
                 showStatus('Please open Gmail first', 'error');
                 showLoading(false);
+                exportEmailBtn.disabled = false;
                 return;
             }
             
@@ -201,6 +213,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         
         showLoading(false);
+        exportEmailBtn.disabled = false;
     });
     
     // Export attachments
@@ -210,17 +223,23 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
         
-        // Require authentication for real attachment downloads
-        if (!isAuthenticated) {
-            showStatus('Authentication required for attachment downloads', 'info');
-            await authenticate();
-            return;
-        }
-        
+        // Disable button to prevent multiple clicks
+        exportAttachmentsBtn.disabled = true;
         showLoading(true);
-        showStatus('Downloading attachments...', 'info');
+        showStatus('Authenticating...', 'info');
         
         try {
+            // Authenticate first
+            const authSuccess = await authenticate();
+            if (!authSuccess) {
+                showStatus('Authentication failed. Please try again.', 'error');
+                showLoading(false);
+                exportAttachmentsBtn.disabled = false;
+                return;
+            }
+            
+            showStatus('Downloading attachments...', 'info');
+            
             const response = await chrome.runtime.sendMessage({
                 action: 'downloadAttachments',
                 emailData: currentEmailData
@@ -237,6 +256,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         
         showLoading(false);
+        exportAttachmentsBtn.disabled = false;
     });
     
     // Export all (email + attachments)
@@ -246,16 +266,23 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
         
-        // Check authentication
-        if (!isAuthenticated) {
-            showStatus('Authenticating for full export...', 'info');
-            await authenticate();
-        }
-        
+        // Disable button to prevent multiple clicks
+        exportAllBtn.disabled = true;
         showLoading(true);
-        showStatus('Exporting email and attachments...', 'info');
+        showStatus('Authenticating...', 'info');
         
         try {
+            // Authenticate first
+            const authSuccess = await authenticate();
+            if (!authSuccess) {
+                showStatus('Authentication failed. Please try again.', 'error');
+                showLoading(false);
+                exportAllBtn.disabled = false;
+                return;
+            }
+            
+            showStatus('Exporting email and attachments...', 'info');
+            
             const response = await chrome.runtime.sendMessage({
                 action: 'exportAll',
                 emailData: currentEmailData
@@ -272,6 +299,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
         
         showLoading(false);
+        exportAllBtn.disabled = false;
     });
     
     // Auto-detect email on popup open

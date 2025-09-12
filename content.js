@@ -119,6 +119,29 @@ function getOpenEmail() {
             }
         }
 
+        // Extract email ID from Gmail URL or DOM
+        let emailId = null;
+        try {
+            // Try to get email ID from URL
+            const urlMatch = window.location.href.match(/\/[a-f0-9]{16,}/);
+            if (urlMatch) {
+                emailId = urlMatch[0].substring(1);
+            }
+            
+            // Try to get from DOM attributes
+            if (!emailId) {
+                const emailElement = document.querySelector('[data-legacy-thread-id], [data-thread-id]');
+                if (emailElement) {
+                    emailId = emailElement.getAttribute('data-legacy-thread-id') || 
+                             emailElement.getAttribute('data-thread-id');
+                }
+            }
+            
+            console.log('Extracted email ID:', emailId);
+        } catch (error) {
+            console.log('Could not extract email ID:', error);
+        }
+
         // Get email body
         const body = emailContent.textContent?.trim() || 'No content found';
         
@@ -142,6 +165,7 @@ function getOpenEmail() {
             date: date,
             body: body,
             attachments: attachments,
+            emailId: emailId, // Add this line
             url: window.location.href
         };
         
@@ -152,12 +176,26 @@ function getOpenEmail() {
 }
 
 // Generate PDF using Chrome's native print functionality
+let isGeneratingPDF = false; // Prevent multiple PDF generations
+
 async function generatePDFDirectly(emailData) {
+    // Prevent multiple PDF generations
+    if (isGeneratingPDF) {
+        console.log('PDF generation already in progress, ignoring duplicate request');
+        return { success: false, error: 'PDF generation already in progress' };
+    }
+    
+    isGeneratingPDF = true;
+    
     try {
         console.log("Generating PDF for:", emailData.subject);
         
         // Create a new window with styled content
         const printWindow = window.open('', '_blank', 'width=800,height=600');
+        
+        if (!printWindow) {
+            throw new Error('Failed to open print window. Please allow popups for this site.');
+        }
         
         const htmlContent = `
 <!DOCTYPE html>
@@ -288,50 +326,27 @@ async function generatePDFDirectly(emailData) {
     <div class="footer">
         Exported by Erado Gmail Export on ${new Date().toLocaleString()}
     </div>
-    
-    <div class="status" id="status">
-        <strong>📄 Auto-Exporting PDF...</strong><br><br>
-        Please wait while we prepare your PDF...
-    </div>
 </body>
 </html>`;
         
-        // Write content to new window
         printWindow.document.write(htmlContent);
         printWindow.document.close();
         
-        // Auto-print after content loads
         printWindow.addEventListener('load', function() {
             console.log('Window loaded, starting auto-print');
             
-            // Update status
-            const statusDiv = printWindow.document.getElementById('status');
-            if (statusDiv) {
-                statusDiv.innerHTML = '<strong>🖨️ Printing PDF...</strong><br><br>Print dialog will open automatically...';
-            }
-            
-            // Wait a bit for content to render, then auto-print
             setTimeout(() => {
                 try {
                     console.log('Triggering auto-print');
                     printWindow.print();
                     
-                    // Update status
-                    if (statusDiv) {
-                        statusDiv.innerHTML = '<strong>✅ PDF Export Complete!</strong><br><br>Window will close automatically...';
-                    }
-                    
-                    // Close window after print
                     setTimeout(() => {
                         console.log('Closing window');
                         printWindow.close();
-                    }, 2000);
+                    }, 500);
                     
                 } catch (error) {
                     console.error('Auto-print failed:', error);
-                    if (statusDiv) {
-                        statusDiv.innerHTML = '<strong>❌ Auto-print failed</strong><br><br>Please use Ctrl+P to print manually.';
-                    }
                 }
             }, 1000);
         });
@@ -341,6 +356,11 @@ async function generatePDFDirectly(emailData) {
     } catch (error) {
         console.error('Error generating PDF:', error);
         return { error: error.message };
+    } finally {
+        // Reset the flag after a delay
+        setTimeout(() => {
+            isGeneratingPDF = false;
+        }, 3000);
     }
 }
 
