@@ -220,7 +220,7 @@ async function saveAttachmentToFolder(attachment, blob) {
 // Get open email data - SIMPLIFIED VERSION
 function getOpenEmail() {
     try {
-        console.error('Detecting email...');
+        console.log('Detecting email...');
         
         // Extract subject
         const subjectSelectors = [
@@ -236,74 +236,122 @@ function getOpenEmail() {
             const element = document.querySelector(selector);
             if (element) {
                 subject = element.textContent?.trim() || 'No Subject';
+                console.log('Found subject:', subject);
                 break;
             }
         }
         
-        // Extract sender - SIMPLE AND RELIABLE APPROACH
+        // Extract sender - FIXED VERSION with better Gmail selectors
         let sender = 'Unknown Sender';
         
-        console.error('Starting sender detection...');
-
-        if (sender === 'Unknown Sender') {
-            const senderSelectors = [
-                '.yW span[email]',
-                '.yW .email',
-                '.gD .g2 span[email]',
-                '.gD .g2 .email',
-                '.sender-name',
-                '.from-name'
-            ];
-            
-            for (const selector of senderSelectors) {
-                const element = document.querySelector(selector);
-                if (element) {
-                    const email = element.getAttribute('email') || element.textContent?.trim();
-                    if (email && email.includes('@') && email !== 'Unknown Sender') {
-                        sender = email;
-                        console.error('Found sender via selector:', selector, sender);
-                        // break;
-                    }
-                }
-            }
-        }
+        console.log('Starting sender detection...');
         
-        console.error('Final sender detected:', sender);
-        
-        // Extract date - SIMPLE AND RELIABLE APPROACH
-        const dateSelectors = [
-            '.g2 .gK',
-            '.date',
-            '.received-date',
-            '.gD .gK',
-            '.yW .gK'
+        // Method 1: Look for sender in Gmail's email header area
+        const senderSelectors = [
+            '.gD .g2 span[email]',           // Gmail sender email attribute
+            '.gD .g2 .email',                // Gmail sender email class
+            '.gD .g2',                       // Gmail sender container
+            '.gD span[email]',               // Gmail sender span
+            '.gD .email',                    // Gmail sender email
+            '.gD'                            // Gmail sender area
         ];
         
-        let date = 'Unknown Date';
-        for (const selector of dateSelectors) {
+        for (const selector of senderSelectors) {
             const element = document.querySelector(selector);
             if (element) {
-                const dateText = element.textContent?.trim();
-                if (dateText && dateText !== 'Unknown Date' && dateText.length > 0) {
-                    date = dateText;
-                    console.error('Found date via selector:', selector, date);
+                // Try to get email from attribute first
+                let email = element.getAttribute('email');
+                
+                // If no email attribute, try text content
+                if (!email) {
+                    const text = element.textContent?.trim();
+                    if (text && text.includes('@') && !text.includes('noreply') && !text.includes('no-reply')) {
+                        email = text;
+                    }
+                }
+                
+                if (email && email.includes('@') && email !== 'Unknown Sender') {
+                    sender = email;
+                    console.log('Found sender via selector:', selector, sender);
                     break;
                 }
             }
         }
         
-        // If still no date, try to find any date-like text
-        if (date === 'Unknown Date') {
+        // Method 2: If still no sender, look for email patterns in the page
+        if (sender === 'Unknown Sender') {
+            console.log('No sender found via selectors, trying email pattern search...');
             const pageText = document.body.textContent;
-            const dateRegex = /(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2},?\s+\d{4}/g;
-            const dates = pageText.match(dateRegex);
-            if (dates && dates.length > 0) {
-                date = dates[0];
-                console.error('Found date via regex:', date);
+            const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
+            const emails = pageText.match(emailRegex);
+            
+            if (emails && emails.length > 0) {
+                // Filter out system emails
+                const filteredEmails = emails.filter(email => 
+                    !email.includes('noreply') && 
+                    !email.includes('no-reply') && 
+                    !email.includes('mail.google.com') &&
+                    !email.includes('gmail.com') &&
+                    !email.includes('google.com') &&
+                    !email.includes('freelancer.com') &&
+                    email.length < 50
+                );
+                
+                if (filteredEmails.length > 0) {
+                    sender = filteredEmails[0];
+                    console.log('Found sender via email regex:', sender);
+                }
             }
         }
         
-        console.error('Final date detected:', date);
+        console.log('Final sender detected:', sender);
+        
+        // Extract date - FIXED VERSION with better Gmail selectors
+        let date = 'Unknown Date';
+        
+        console.log('Starting date detection...');
+        
+        // Method 1: Look for date in Gmail's email header area
+        const dateSelectors = [
+            '.gH .gK .g3',                   // Gmail thread date (most specific)
+            '.gH .gK .g4',                   // Gmail thread date alternative
+            '.h5 .gK .g3',                   // Gmail expanded email date
+            '.h5 .gK .g4',                   // Gmail expanded email date alternative
+            '.gH .gK',                       // Gmail date container
+            '.h5 .gK',                       // Gmail date container alternative
+            '.g2 .gK',                       // Gmail date (fallback)
+            '.yW .gK'                        // Gmail date (fallback)
+        ];
+        
+        for (const selector of dateSelectors) {
+            const element = document.querySelector(selector);
+            if (element && element.textContent.trim()) {
+                const dateText = element.textContent.trim();
+                
+                // Validate that it looks like a date, not sender info
+                if (dateText.match(/(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|\d{1,2}\/\d{1,2}\/\d{2,4}|\d{1,2}:\d{2}\s*(AM|PM)|Yesterday|Today|Mon|Tue|Wed|Thu|Fri|Sat|Sun)/i)) {
+                    date = dateText;
+                    console.log('Found date via selector:', selector, date);
+                    break;
+                } else {
+                    console.log(`Skipping "${dateText}" from selector "${selector}" - doesn't look like a date`);
+                }
+            }
+        }
+        
+        // Method 2: If still no date, try to find any date-like text in the page
+        if (date === 'Unknown Date') {
+            console.log('No date found via selectors, trying date pattern search...');
+            const pageText = document.body.textContent;
+            const dateRegex = /(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2},?\s+\d{4}|(Mon|Tue|Wed|Thu|Fri|Sat|Sun),?\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2},?\s+\d{1,2}:\d{2}\s*(AM|PM)/g;
+            const dates = pageText.match(dateRegex);
+            if (dates && dates.length > 0) {
+                date = dates[0];
+                console.log('Found date via regex:', date);
+            }
+        }
+        
+        console.log('Final date detected:', date);
         
         // Extract body
         const bodySelectors = [
@@ -322,7 +370,7 @@ function getOpenEmail() {
             }
         }
         
-        // Extract attachments - SIMPLIFIED VERSION
+        // Extract attachments - IMPROVED VERSION
         const attachmentElements = document.querySelectorAll('.aZo, .attachment, .file-attachment, [data-attachment-id]');
         const attachments = Array.from(attachmentElements).map(el => {
             // Try to get clean filename from specific selectors
@@ -381,28 +429,10 @@ function getOpenEmail() {
                 }
             }
             
-            // Try different selectors for type
-            const typeSelectors = [
-                '.aZo-type',           // Gmail attachment type
-                '.attachment-type',     // Generic attachment type
-                '[data-attachment-type]' // Data attribute
-            ];
-            
-            for (const selector of typeSelectors) {
-                const typeEl = el.querySelector(selector);
-                if (typeEl) {
-                    const typeText = typeEl.textContent?.trim();
-                    if (typeText && typeText.length < 20) {
-                        type = typeText;
-                        break;
-                    }
-                }
-            }
-            
             return { name, size, type };
         });
         
-        console.error("Email detected:", { subject, sender, date, attachments: attachments.length });
+        console.log("Email detected:", { subject, sender, date, attachments: attachments.length });
         
         return {
             success: true,
