@@ -1,202 +1,28 @@
 // Erado Gmail Export - Content Script
-console.log("Erado Gmail Export content script loaded at:", new Date().toISOString());
-
-// Simple email detection function
-function getOpenEmail() {
-    console.log("getOpenEmail() called");
-    
-    try {
-        // Check if we're on Gmail
-        if (window.location.hostname !== 'mail.google.com') {
-            console.log("Not on Gmail domain");
-            return { error: "Not on Gmail domain" };
-        }
-
-        // Wait a bit for Gmail to load
-        const emailContainer = document.querySelector('[role="main"]');
-        console.log("Email container found:", !!emailContainer);
-        
-        if (!emailContainer) {
-            console.log("No email container found");
-            return { error: "No email container found - please open an email" };
-        }
-
-        // Try multiple selectors for email content
-        let emailContent = null;
-        const contentSelectors = [
-            '.a3s.aiL', // Gmail email body
-            '[role="listitem"] .a3s', // Alternative email body
-            '.email-body', // Generic email body
-            '.message-content', // Generic message content
-            '[data-thread-id] .a3s', // Thread-based email body
-            '.thread-content', // Thread content
-            '.email-content', // Generic email content
-            '.yW .y2', // Gmail content area
-            '.yW .yP' // Gmail content area alternative
-        ];
-        
-        for (const selector of contentSelectors) {
-            const element = document.querySelector(selector);
-            if (element && element.textContent.trim()) {
-                emailContent = element;
-                console.log("Found email content with selector:", selector);
-                break;
-            }
-        }
-        
-        if (!emailContent) {
-            console.log("No email content found with any selector");
-            // Try to get any text content from the main area
-            const mainArea = document.querySelector('[role="main"]');
-            if (mainArea && mainArea.textContent.trim()) {
-                emailContent = mainArea;
-                console.log("Using main area as email content");
-            } else {
-                return { error: "No email content found" };
-            }
-        }
-
-        // Try multiple selectors for subject
-        let subject = 'No Subject';
-        const subjectSelectors = [
-            'h2.hP', // Gmail subject
-            '[data-legacy-thread-id] h2', // Alternative subject
-            '.thread-subject', // Thread subject
-            'h1', // Generic heading
-            '.subject', // Generic subject
-            '[data-thread-perm-id] h2', // Thread perm ID subject
-            '.yW h2', // Gmail subject alternative
-            '.yW .yP' // Gmail subject area
-        ];
-        
-        for (const selector of subjectSelectors) {
-            const element = document.querySelector(selector);
-            if (element && element.textContent.trim()) {
-                subject = element.textContent.trim();
-                console.log("Found subject with selector:", selector, subject);
-                break;
-            }
-        }
-
-        // Try multiple selectors for sender
-        let sender = 'Unknown Sender';
-        const senderSelectors = [
-            '.gD', // Gmail sender
-            '.yW span[email]', // Alternative sender
-            '.sender-name', // Generic sender name
-            '[data-email]', // Data email attribute
-            '[data-sender-name]', // Data sender name
-            '.yW .yP', // Gmail sender name
-            '.yW .y2', // Gmail sender email
-            '.yW span' // Gmail sender span
-        ];
-        
-        for (const selector of senderSelectors) {
-            const element = document.querySelector(selector);
-            if (element && element.textContent.trim()) {
-                sender = element.textContent.trim();
-                console.log("Found sender with selector:", selector, sender);
-                break;
-            }
-        }
-
-        // Try multiple selectors for date
-        let date = new Date().toLocaleDateString();
-        const dateSelectors = [
-            '.date', // Generic date
-            '[data-date]', // Data date attribute
-            '.yW .y2', // Gmail date
-            '.yW .yP', // Gmail date alternative
-            '.thread-date' // Thread date
-        ];
-        
-        for (const selector of dateSelectors) {
-            const element = document.querySelector(selector);
-            if (element && element.textContent.trim()) {
-                date = element.textContent.trim();
-                console.log("Found date with selector:", selector, date);
-                break;
-            }
-        }
-
-        // Extract email ID from Gmail URL or DOM
-        let emailId = null;
-        try {
-            // Try to get email ID from URL
-            const urlMatch = window.location.href.match(/\/[a-f0-9]{16,}/);
-            if (urlMatch) {
-                emailId = urlMatch[0].substring(1);
-            }
-            
-            // Try to get from DOM attributes
-            if (!emailId) {
-                const emailElement = document.querySelector('[data-legacy-thread-id], [data-thread-id]');
-                if (emailElement) {
-                    emailId = emailElement.getAttribute('data-legacy-thread-id') || 
-                             emailElement.getAttribute('data-thread-id');
-                }
-            }
-            
-            console.log('Extracted email ID:', emailId);
-        } catch (error) {
-            console.log('Could not extract email ID:', error);
-        }
-
-        // Get email body
-        const body = emailContent.textContent?.trim() || 'No content found';
-        
-        // Extract attachments
-        const attachmentElements = document.querySelectorAll('.aZo, .attachment, .file-attachment, [data-attachment-id]');
-        const attachments = Array.from(attachmentElements).map(el => ({
-            name: el.querySelector('.aZo-name, .attachment-name')?.textContent?.trim() || 
-                  el.textContent?.trim() || 'Unknown Attachment',
-            size: el.querySelector('.aZo-size, .attachment-size')?.textContent?.trim() || 
-                  el.getAttribute('data-size') || 'Unknown Size',
-            type: el.querySelector('.aZo-type, .attachment-type')?.textContent?.trim() || 
-                  el.getAttribute('data-type') || 'Unknown Type'
-        }));
-
-        console.log("Email detected:", { subject, sender, date, attachments: attachments.length });
-        
-        return {
-            success: true,
-            subject: subject,
-            sender: sender,
-            date: date,
-            body: body,
-            attachments: attachments,
-            emailId: emailId, // Add this line
-            url: window.location.href
-        };
-        
-    } catch (error) {
-        console.error("Error in getOpenEmail:", error);
-        return { error: error.message };
-    }
-}
+console.error('Erado Gmail Export content script loaded');
 
 // Generate PDF using Chrome's native print functionality
 let isGeneratingPDF = false; // Prevent multiple PDF generations
+let currentFolderHandle = null; // Store the FileSystemDirectoryHandle here
 
 async function generatePDFDirectly(emailData) {
     // Prevent multiple PDF generations
     if (isGeneratingPDF) {
-        console.log('PDF generation already in progress, ignoring duplicate request');
+        console.error('PDF generation already in progress, ignoring duplicate request');
         return { success: false, error: 'PDF generation already in progress' };
+    }
+    
+    if (!currentFolderHandle) {
+        console.error('No folder selected for PDF generation');
+        return { success: false, error: 'No folder selected. Please select a folder first.' };
     }
     
     isGeneratingPDF = true;
     
     try {
-        console.log("Generating PDF for:", emailData.subject);
+        console.error("Generating PDF for:", emailData.subject);
         
-        // Create a new window with styled content
-        const printWindow = window.open('', '_blank', 'width=800,height=600');
-        
-        if (!printWindow) {
-            throw new Error('Failed to open print window. Please allow popups for this site.');
-        }
-        
+        // Create HTML content for PDF
         const htmlContent = `
 <!DOCTYPE html>
 <html>
@@ -276,18 +102,6 @@ async function generatePDFDirectly(emailData) {
             body { margin: 0; }
             .no-print { display: none; }
         }
-        .status {
-            position: fixed;
-            top: 20px;
-            left: 20px;
-            background: #f0f8ff;
-            border: 2px solid #667eea;
-            padding: 15px;
-            border-radius: 5px;
-            font-size: 14px;
-            z-index: 1000;
-            max-width: 300px;
-        }
     </style>
 </head>
 <body>
@@ -329,29 +143,19 @@ async function generatePDFDirectly(emailData) {
 </body>
 </html>`;
         
-        printWindow.document.write(htmlContent);
-        printWindow.document.close();
+        // Create blob from HTML content
+        const blob = new Blob([htmlContent], { type: 'text/html' });
         
-        printWindow.addEventListener('load', function() {
-            console.log('Window loaded, starting auto-print');
-            
-            setTimeout(() => {
-                try {
-                    console.log('Triggering auto-print');
-                    printWindow.print();
-                    
-                    setTimeout(() => {
-                        console.log('Closing window');
-                        printWindow.close();
-                    }, 500);
-                    
-                } catch (error) {
-                    console.error('Auto-print failed:', error);
-                }
-            }, 1000);
-        });
+        // Save to user-selected folder using the stored handle
+        const filename = `erado-export-${sanitizeFilename(emailData.subject)}.html`;
+        const fileHandle = await currentFolderHandle.getFileHandle(filename, { create: true });
+        const writable = await fileHandle.createWritable();
+        await writable.write(blob);
+        await writable.close();
         
-        return { success: true, filename: `erado-export-${sanitizeFilename(emailData.subject)}.pdf` };
+        console.error('PDF saved to user-selected folder:', filename);
+        
+        return { success: true, filename: filename };
         
     } catch (error) {
         console.error('Error generating PDF:', error);
@@ -364,44 +168,287 @@ async function generatePDFDirectly(emailData) {
     }
 }
 
-// Sanitize filename
+// Select folder function
+async function selectFolder() {
+    try {
+        console.error('Opening folder picker...');
+        
+        const folderHandle = await window.showDirectoryPicker({
+            mode: 'readwrite',
+            startIn: 'documents'
+        });
+        
+        if (folderHandle) {
+            currentFolderHandle = folderHandle; // Store the handle internally
+            console.error('Folder selected:', currentFolderHandle.name);
+            return { success: true, folderName: currentFolderHandle.name }; // Return name, not the handle itself
+        } else {
+            return { success: false, error: 'No folder selected' };
+        }
+    } catch (error) {
+        console.error('Error selecting folder:', error);
+        return { success: false, error: error.message };
+    }
+}
+
+// Save attachment to user-selected folder
+async function saveAttachmentToFolder(attachment, blob) {
+    if (!currentFolderHandle) {
+        console.error('No folder selected for attachment saving');
+        return { success: false, error: 'No folder selected. Please select a folder first.' };
+    }
+
+    try {
+        console.error('Saving attachment to user-selected folder:', attachment.filename);
+        
+        // Save file to selected folder
+        const filename = `erado-${sanitizeFilename(attachment.filename)}`;
+        const fileHandle = await currentFolderHandle.getFileHandle(filename, { create: true });
+        const writable = await fileHandle.createWritable();
+        await writable.write(blob);
+        await writable.close();
+        
+        console.error('Attachment saved successfully:', filename);
+        return { success: true, filename: filename };
+        
+    } catch (error) {
+        console.error('Error saving attachment:', error);
+        return { success: false, error: error.message };
+    }
+}
+
+// Get open email data - SIMPLIFIED VERSION
+function getOpenEmail() {
+    try {
+        console.error('Detecting email...');
+        
+        // Extract subject
+        const subjectSelectors = [
+            'h2[data-thread-perm-id]',
+            '.hP',
+            '.thread-subject',
+            '[data-thread-id] h2',
+            '.mail-subject'
+        ];
+        
+        let subject = 'No Subject';
+        for (const selector of subjectSelectors) {
+            const element = document.querySelector(selector);
+            if (element) {
+                subject = element.textContent?.trim() || 'No Subject';
+                break;
+            }
+        }
+        
+        // Extract sender - SIMPLE AND RELIABLE APPROACH
+        let sender = 'Unknown Sender';
+        
+        console.error('Starting sender detection...');
+
+        if (sender === 'Unknown Sender') {
+            const senderSelectors = [
+                '.yW span[email]',
+                '.yW .email',
+                '.gD .g2 span[email]',
+                '.gD .g2 .email',
+                '.sender-name',
+                '.from-name'
+            ];
+            
+            for (const selector of senderSelectors) {
+                const element = document.querySelector(selector);
+                if (element) {
+                    const email = element.getAttribute('email') || element.textContent?.trim();
+                    if (email && email.includes('@') && email !== 'Unknown Sender') {
+                        sender = email;
+                        console.error('Found sender via selector:', selector, sender);
+                        // break;
+                    }
+                }
+            }
+        }
+        
+        console.error('Final sender detected:', sender);
+        
+        // Extract date - SIMPLE AND RELIABLE APPROACH
+        const dateSelectors = [
+            '.g2 .gK',
+            '.date',
+            '.received-date',
+            '.gD .gK',
+            '.yW .gK'
+        ];
+        
+        let date = 'Unknown Date';
+        for (const selector of dateSelectors) {
+            const element = document.querySelector(selector);
+            if (element) {
+                const dateText = element.textContent?.trim();
+                if (dateText && dateText !== 'Unknown Date' && dateText.length > 0) {
+                    date = dateText;
+                    console.error('Found date via selector:', selector, date);
+                    break;
+                }
+            }
+        }
+        
+        // If still no date, try to find any date-like text
+        if (date === 'Unknown Date') {
+            const pageText = document.body.textContent;
+            const dateRegex = /(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2},?\s+\d{4}/g;
+            const dates = pageText.match(dateRegex);
+            if (dates && dates.length > 0) {
+                date = dates[0];
+                console.error('Found date via regex:', date);
+            }
+        }
+        
+        console.error('Final date detected:', date);
+        
+        // Extract body
+        const bodySelectors = [
+            '.a3s',
+            '.email-body',
+            '.message-body',
+            '.mail-message'
+        ];
+        
+        let body = 'No content found';
+        for (const selector of bodySelectors) {
+            const element = document.querySelector(selector);
+            if (element) {
+                body = element.textContent?.trim() || 'No content found';
+                break;
+            }
+        }
+        
+        // Extract attachments - SIMPLIFIED VERSION
+        const attachmentElements = document.querySelectorAll('.aZo, .attachment, .file-attachment, [data-attachment-id]');
+        const attachments = Array.from(attachmentElements).map(el => {
+            // Try to get clean filename from specific selectors
+            let name = 'Unknown Attachment';
+            let size = 'Unknown Size';
+            let type = 'Unknown Type';
+            
+            // Try different selectors for filename
+            const nameSelectors = [
+                '.aZo-name',           // Gmail attachment name
+                '.attachment-name',    // Generic attachment name
+                '[data-attachment-name]', // Data attribute
+                '.filename',            // Generic filename
+                'span[title]'           // Title attribute
+            ];
+            
+            for (const selector of nameSelectors) {
+                const nameEl = el.querySelector(selector);
+                if (nameEl) {
+                    const text = nameEl.textContent?.trim() || nameEl.getAttribute('title') || '';
+                    if (text && text.length < 100) { // Avoid very long concatenated text
+                        name = text;
+                        break;
+                    }
+                }
+            }
+            
+            // If still no good name, try to extract from the element's text content
+            if (name === 'Unknown Attachment') {
+                const fullText = el.textContent?.trim() || '';
+                // Look for common file extensions to extract filename
+                const fileMatch = fullText.match(/([a-zA-Z0-9_\-\.\s]+\.(pdf|doc|docx|xls|xlsx|ppt|pptx|txt|jpg|jpeg|png|gif|zip|rar|mp4|mp3|avi|mov))\s/i);
+                if (fileMatch) {
+                    name = fileMatch[1].trim();
+                } else if (fullText.length < 50) {
+                    // If text is short, use it as filename
+                    name = fullText;
+                }
+            }
+            
+            // Try different selectors for size
+            const sizeSelectors = [
+                '.aZo-size',           // Gmail attachment size
+                '.attachment-size',     // Generic attachment size
+                '[data-attachment-size]' // Data attribute
+            ];
+            
+            for (const selector of sizeSelectors) {
+                const sizeEl = el.querySelector(selector);
+                if (sizeEl) {
+                    const sizeText = sizeEl.textContent?.trim();
+                    if (sizeText && sizeText.match(/\d+.*[KMG]?B/i)) {
+                        size = sizeText;
+                        break;
+                    }
+                }
+            }
+            
+            // Try different selectors for type
+            const typeSelectors = [
+                '.aZo-type',           // Gmail attachment type
+                '.attachment-type',     // Generic attachment type
+                '[data-attachment-type]' // Data attribute
+            ];
+            
+            for (const selector of typeSelectors) {
+                const typeEl = el.querySelector(selector);
+                if (typeEl) {
+                    const typeText = typeEl.textContent?.trim();
+                    if (typeText && typeText.length < 20) {
+                        type = typeText;
+                        break;
+                    }
+                }
+            }
+            
+            return { name, size, type };
+        });
+        
+        console.error("Email detected:", { subject, sender, date, attachments: attachments.length });
+        
+        return {
+            success: true,
+            subject,
+            sender,
+            date,
+            body,
+            attachments,
+            url: window.location.href
+        };
+        
+    } catch (error) {
+        console.error('Error detecting email:', error);
+        return { success: false, error: error.message };
+    }
+}
+
+// Listen for messages from popup
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    console.error("Content script received message:", message.action);
+    
+    if (message.action === 'getOpenEmail' || message.action === 'getEmail') {
+        const result = getOpenEmail();
+        sendResponse(result);
+    } else if (message.action === 'generatePDF' || message.action === 'generatePDFFromContent') {
+        generatePDFDirectly(message.data) // Don't pass folderHandle here
+            .then(result => sendResponse(result))
+            .catch(error => sendResponse({ error: error.message }));
+        return true; // Keep message channel open
+    } else if (message.action === 'selectFolder') {
+        selectFolder()
+            .then(result => sendResponse(result))
+            .catch(error => sendResponse({ error: error.message }));
+        return true; // Keep message channel open
+    } else if (message.action === 'saveAttachmentToFolder') {
+        saveAttachmentToFolder(message.attachment, message.blob) // Don't pass folderHandle here
+            .then(result => sendResponse(result))
+            .catch(error => sendResponse({ error: error.message }));
+        return true; // Keep message channel open
+    }
+});
+
+// Utility function to sanitize filename
 function sanitizeFilename(filename) {
     return filename
         .replace(/[<>:"/\\|?*]/g, '_')
         .replace(/\s+/g, '_')
         .substring(0, 50);
 }
-
-// Listen for messages from popup
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    console.log("Content script received message:", message.action);
-    
-    try {
-        if (message.action === 'getOpenEmail' || message.action === 'getEmail') {
-            console.log("Processing email detection request");
-            const result = getOpenEmail();
-            console.log("Sending response:", result);
-            sendResponse(result);
-        } else if (message.action === 'generatePDF' || message.action === 'generatePDFFromContent') {
-            console.log("Processing PDF generation request");
-            generatePDFDirectly(message.data)
-                .then(result => {
-                    console.log("PDF generation result:", result);
-                    sendResponse(result);
-                })
-                .catch(error => {
-                    console.error("PDF generation error:", error);
-                    sendResponse({ error: error.message });
-                });
-            return true; // Keep message channel open
-        } else {
-            console.log("Unknown action:", message.action);
-            sendResponse({ error: "Unknown action: " + message.action });
-        }
-    } catch (error) {
-        console.error("Error in message listener:", error);
-        sendResponse({ error: error.message });
-    }
-    
-    return true; // Keep message channel open
-});

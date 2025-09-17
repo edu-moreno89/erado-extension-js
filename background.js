@@ -11,24 +11,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     
     switch (message.action) {
         case 'setToken':
-            // Receive token from popup
             accessToken = message.token;
-            console.log('Token received from popup, length:', accessToken ? accessToken.length : 'undefined');
+            console.log('Token set in background script, length:', accessToken ? accessToken.length : 'undefined');
             sendResponse({ success: true });
-            break;
-            
-        case 'exportEmailPDF':
-            // Completely ignore PDF generation - handled by content script
-            console.log('PDF generation ignored by background script');
-            sendResponse({ error: 'PDF generation handled by content script' });
             break;
             
         case 'downloadAttachments':
             handleDownloadAttachments(message.emailData, sendResponse);
-            break;
-            
-        case 'exportAll':
-            handleExportAll(message.emailData, sendResponse);
             break;
             
         default:
@@ -38,7 +27,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true; // Keep message channel open
 });
 
-// Download real attachments using Gmail API
+// Download real attachments using Gmail API - SIMPLIFIED VERSION
 async function handleDownloadAttachments(emailData, sendResponse) {
     try {
         console.log('Downloading real attachments for:', emailData.subject);
@@ -56,7 +45,7 @@ async function handleDownloadAttachments(emailData, sendResponse) {
         
         console.log('Using token, length:', accessToken.length);
         
-        // Get email details from Gmail API
+        // Get email details from Gmail API using search
         const emailDetails = await getEmailDetailsFromAPI(emailData, accessToken);
         
         if (!emailDetails.success) {
@@ -67,9 +56,9 @@ async function handleDownloadAttachments(emailData, sendResponse) {
         const realAttachments = emailDetails.attachments;
         console.log('Found real attachments from API:', realAttachments.length);
         
-        // Download each real attachment
+        // Download each real attachment to content script (which will save to selected folder)
         for (const attachment of realAttachments) {
-            await downloadRealAttachment(emailDetails.emailId, attachment, accessToken);
+            await downloadRealAttachmentToContentScript(emailDetails.emailId, attachment, accessToken);
         }
         
         sendResponse({ success: true, message: `Downloaded ${realAttachments.length} real attachments` });
@@ -80,90 +69,8 @@ async function handleDownloadAttachments(emailData, sendResponse) {
     }
 }
 
-// Get email details from Gmail API
-async function getEmailDetailsFromAPI(emailData, token) {
-    try {
-        // Try to extract email ID from URL or use a search
-        let emailId = emailData.emailId;
-        console.log('Email ID:', emailId);
-        
-        if (!emailId) {
-            // Search for the email by subject and sender
-            const searchQuery = `subject:"${emailData.subject}" from:"${emailData.sender}"`;
-            console.log('Search query:', searchQuery);
-            
-            const searchResponse = await fetch(`${GMAIL_API_BASE}/messages?q=${encodeURIComponent(searchQuery)}&maxResults=1`, {
-                headers: {
-                    'Authorization': `Bearer ${token}`,
-                    'Content-Type': 'application/json'
-                }
-            });
-            
-            if (!searchResponse.ok) {
-                const errorText = await searchResponse.text();
-                console.error('Gmail API search error:', searchResponse.status, errorText);
-                throw new Error(`Gmail API search error: ${searchResponse.status} - ${errorText}`);
-            }
-            
-            const searchData = await searchResponse.json();
-            if (searchData.messages && searchData.messages.length > 0) {
-                emailId = searchData.messages[0].id;
-                console.log('Found email ID via search:', emailId);
-            } else {
-                throw new Error('Email not found via API search.');
-            }
-        }
-
-        // Get full email details
-        const response = await fetch(`${GMAIL_API_BASE}/messages/${emailId}?format=full`, {
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json'
-            }
-        });
-        
-        if (!response.ok) {
-            const errorText = await response.text();
-            console.error('Gmail API fetch email details error:', response.status, errorText);
-            throw new Error(`Gmail API error: ${response.status} - ${errorText}`);
-        }
-        
-        const data = await response.json();
-        return processEmailDetails(data, emailId);
-        
-    } catch (error) {
-        console.error('Error getting email details from API:', error);
-        return { success: false, error: error.message };
-    }
-}
-
-// Helper function to process email details
-function processEmailDetails(emailDetails, emailId) {
-    // Extract attachments from email payload
-    const attachments = [];
-    function extractAttachments(part) {
-        if (part.filename && part.body && part.body.attachmentId) {
-            attachments.push({
-                filename: part.filename,
-                mimeType: part.mimeType,
-                size: part.body.size,
-                attachmentId: part.body.attachmentId
-            });
-        }
-        if (part.parts) {
-            part.parts.forEach(extractAttachments);
-        }
-    }
-    
-    if (emailDetails.payload) {
-        extractAttachments(emailDetails.payload);
-    }
-    
-    return { success: true, attachments, emailId };
-}
-
-// Download real attachment from Gmail API
-async function downloadRealAttachment(messageId, attachment, token) {
+// Download real attachment and send to content script
+async function downloadRealAttachmentToContentScript(messageId, attachment, token) {
     try {
         console.log('Downloading real attachment:', attachment.filename);
         
@@ -181,7 +88,15 @@ async function downloadRealAttachment(messageId, attachment, token) {
         }
         
         const attachmentData = await response.json();
-        await processAttachmentDownload(attachmentData, attachment);
+        const blob = await processAttachmentData(attachmentData, attachment);
+        
+        // Send attachment to content script for saving
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        await chrome.tabs.sendMessage(tab.id, {
+            action: 'saveAttachmentToFolder',
+            attachment: attachment,
+            blob: blob
+        });
         
     } catch (error) {
         console.error('Error downloading real attachment:', error);
@@ -189,64 +104,109 @@ async function downloadRealAttachment(messageId, attachment, token) {
     }
 }
 
-// Helper function to process attachment download
-async function processAttachmentDownload(attachmentData, attachment) {
+// Helper function to process attachment data
+async function processAttachmentData(attachmentData, attachment) {
     const decodedData = atob(attachmentData.data.replace(/-/g, '+').replace(/_/g, '/'));
     
-    // Convert to blob and download
+    // Convert to blob
     const bytes = new Uint8Array(decodedData.length);
     for (let i = 0; i < decodedData.length; i++) {
         bytes[i] = decodedData.charCodeAt(i);
     }
     
-    const blob = new Blob([bytes], { type: attachment.mimeType || 'application/octet-stream' });
-    
-    // Convert to data URL for download
-    const reader = new FileReader();
-    await new Promise((resolve, reject) => {
-        reader.onload = async () => {
-            try {
-                await chrome.downloads.download({
-                    url: reader.result,
-                    filename: `erado-${sanitizeFilename(attachment.filename)}`,
-                    saveAs: false
-                });
-                console.log('Downloaded real attachment:', attachment.filename);
-                resolve();
-            } catch (error) {
-                reject(error);
-            }
-        };
-        reader.onerror = reject;
-        reader.readAsDataURL(blob);
-    });
+    return new Blob([bytes], { type: attachment.mimeType || 'application/octet-stream' });
 }
 
-// Export all (email + attachments)
-async function handleExportAll(emailData, sendResponse) {
+// Get email details from Gmail API - SIMPLIFIED VERSION
+async function getEmailDetailsFromAPI(emailData, token) {
     try {
-        console.log('Exporting all for:', emailData.subject);
+        console.log('Searching for email:', emailData);
         
-        // Skip PDF generation - handled by content script
-        console.log('PDF generation skipped - handled by content script');
+        // Use Gmail search - much more reliable than trying to extract message IDs
+        const searchQuery = `subject:"${emailData.subject}" from:${emailData.sender}`;
+        console.log('Search query:', searchQuery);
         
-        // Only download attachments if any
-        if (emailData.attachments && emailData.attachments.length > 0) {
-            const attachmentResult = await new Promise(resolve => {
-                handleDownloadAttachments(emailData, resolve);
-            });
-            
-            if (!attachmentResult.success) {
-                sendResponse({ error: attachmentResult.error });
-                return;
+        const searchResponse = await fetch(`${GMAIL_API_BASE}/messages?q=${encodeURIComponent(searchQuery)}&maxResults=1`, {
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
             }
+        });
+        
+        if (!searchResponse.ok) {
+            const errorText = await searchResponse.text();
+            console.error('Gmail API search error:', searchResponse.status, errorText);
+            throw new Error(`Gmail API search error: ${searchResponse.status} - ${errorText}`);
         }
         
-        sendResponse({ success: true });
+        const searchData = await searchResponse.json();
+        if (!searchData.messages || searchData.messages.length === 0) {
+            throw new Error('Email not found via search');
+        }
+        
+        const messageId = searchData.messages[0].id;
+        console.log('Found message ID via search:', messageId);
+        
+        // Get full email details using the found message ID
+        const response = await fetch(`${GMAIL_API_BASE}/messages/${messageId}?format=full`, {
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            }
+        });
+        
+        if (!response.ok) {
+            const errorText = await response.text();
+            console.error('Gmail API fetch error:', response.status, errorText);
+            throw new Error(`Gmail API error: ${response.status} - ${errorText}`);
+        }
+        
+        const data = await response.json();
+        return processEmailDetails(data, messageId);
         
     } catch (error) {
-        console.error('Error exporting all:', error);
-        sendResponse({ error: error.message });
+        console.error('Error getting email details from API:', error);
+        return { success: false, error: error.message };
+    }
+}
+
+// Process email details from Gmail API response
+function processEmailDetails(data, messageId) {
+    try {
+        const headers = data.payload.headers;
+        const subject = headers.find(h => h.name === 'Subject')?.value || 'No Subject';
+        const sender = headers.find(h => h.name === 'From')?.value || 'Unknown Sender';
+        const date = headers.find(h => h.name === 'Date')?.value || 'Unknown Date';
+        
+        // Extract attachments
+        const attachments = [];
+        if (data.payload.parts) {
+            data.payload.parts.forEach(part => {
+                if (part.filename && part.body.attachmentId) {
+                    attachments.push({
+                        filename: part.filename,
+                        mimeType: part.mimeType,
+                        size: part.body.size,
+                        attachmentId: part.body.attachmentId
+                    });
+                }
+            });
+        }
+        
+        console.log('Processed email details:', { subject, sender, attachments: attachments.length });
+        
+        return {
+            success: true,
+            emailId: messageId,
+            subject,
+            sender,
+            date,
+            attachments
+        };
+        
+    } catch (error) {
+        console.error('Error processing email details:', error);
+        return { success: false, error: error.message };
     }
 }
 
