@@ -456,82 +456,42 @@ function getAllEmailsInThread() {
     try {
         console.log('Detecting all emails in conversation thread...');
         
-        // Gmail conversation thread selectors - UPDATED FOR BETTER DETECTION
-        const emailSelectors = [
-            '.h7',                    // Gmail thread email container
-            '.gE',                    // Gmail expanded email
-            '.h5',                    // Gmail email message
-            '.thread-message',        // Generic thread message
-            '[data-message-id]',      // Message with ID
-            '.adn',                   // Gmail message container
-            '.a3s',                   // Gmail message body container
-            '.gE .adn',               // Gmail expanded message
-            '.h7 .adn'                // Gmail thread message
-        ];
+        // Use .gE as the primary selector for Gmail email elements
+        const emailElements = document.querySelectorAll('.gE');
+        console.log(`Found ${emailElements.length} email elements with .gE selector`);
         
-        let emailElements = [];
-        
-        // Try each selector to find email elements
-        for (const selector of emailSelectors) {
-            const elements = document.querySelectorAll(selector);
-            if (elements.length > 0) {
-                console.log(`Found ${elements.length} elements with selector: ${selector}`);
-                emailElements = Array.from(elements);
-                break;
-            }
-        }
-        
-        // If no specific selectors work, try Gmail's conversation structure
         if (emailElements.length === 0) {
-            console.log('No elements found with specific selectors, trying Gmail conversation structure...');
+            console.log('No .gE elements found, trying fallback selectors...');
             
-            // Look for Gmail's conversation thread structure
-            const conversationContainer = document.querySelector('.thread');
-            if (conversationContainer) {
-                // Find individual message containers within the conversation
-                const messageContainers = conversationContainer.querySelectorAll('.adn, .gE, .h5, .h7');
-                if (messageContainers.length > 0) {
-                    emailElements = Array.from(messageContainers);
-                    console.log(`Found ${emailElements.length} message containers in conversation`);
+            // Fallback selectors if .gE doesn't work
+            const fallbackSelectors = [
+                '.adn',           // Gmail message container
+                '.h5',            // Gmail email message
+                '.h7',            // Gmail thread email container
+                '.message',       // Generic message
+                '[data-message-id]' // Message with ID
+            ];
+            
+            for (const selector of fallbackSelectors) {
+                const elements = document.querySelectorAll(selector);
+                if (elements.length > 0) {
+                    console.log(`Found ${elements.length} elements with fallback selector: ${selector}`);
+                    emailElements = Array.from(elements);
+                    break;
                 }
-            }
-            
-            // If still no elements, try to find by content structure
-            if (emailElements.length === 0) {
-                console.log('Trying content-based detection...');
-                
-                // Look for elements that contain email headers (sender + date patterns)
-                const allElements = document.querySelectorAll('div, span, td');
-                emailElements = Array.from(allElements).filter(el => {
-                    const text = el.textContent?.trim() || '';
-                    
-                    // Check if element contains email header patterns
-                    const hasEmailHeader = text.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/) && 
-                                         text.match(/(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|\d{1,2}\/\d{1,2}\/\d{2,4}|\d{1,2}:\d{2}\s*(AM|PM)|Yesterday|Today|Mon|Tue|Wed|Thu|Fri|Sat|Sun)/i);
-                    
-                    // Check if element has reasonable size (not too small, not too large)
-                    const reasonableSize = text.length > 20 && text.length < 500;
-                    
-                    // Check if element contains message content
-                    const hasMessageContent = text.includes('Hi ') || text.includes('Hello ') || text.includes('Thank you') || text.includes('Awesome');
-                    
-                    return hasEmailHeader && reasonableSize && hasMessageContent;
-                });
-                
-                console.log(`Found ${emailElements.length} elements via content-based detection`);
             }
         }
         
         // Filter out elements that are too small or don't contain email-like content
-        emailElements = emailElements.filter(el => {
+        const validElements = Array.from(emailElements).filter(el => {
             const text = el.textContent?.trim() || '';
-            return text.length > 30 && text.length < 1000; // Reasonable size
+            return text.length > 50 && text.length < 1000; // Reasonable size
         });
         
-        console.log(`After filtering: ${emailElements.length} email elements`);
+        console.log(`After filtering: ${validElements.length} valid email elements`);
         
         // Extract email data from each element
-        const emails = emailElements.map((element, index) => {
+        const emails = validElements.map((element, index) => {
             return extractEmailFromElement(element, index);
         }).filter(email => email && email.sender !== 'Unknown Sender'); // Filter out invalid emails
         
@@ -552,22 +512,22 @@ function getAllEmailsInThread() {
 // Helper function to extract email data from a specific element
 function extractEmailFromElement(element, index) {
     try {
-        console.log(`Extracting email data from element ${index}:`, element.textContent?.substring(0, 100));
+        console.log(`Extracting email data from .gE element ${index}:`, element.textContent?.substring(0, 100));
         
-        // Extract sender from this specific element
+        // Extract sender from this specific .gE element
         let sender = 'Unknown Sender';
         
-        // Look for sender within this element - IMPROVED SELECTORS
+        // Look for sender within this .gE element - IMPROVED SELECTORS
         const senderSelectors = [
-            'span[email]',           // Email attribute
-            '.email',                // Email class
-            'a[href*="mailto:"]',    // Mailto link
-            '.gD .g2 span[email]',  // Gmail sender email attribute
-            '.gD .g2 .email',        // Gmail sender email class
-            '.gD .g2',               // Gmail sender container
-            '.gD span[email]',       // Gmail sender span
-            '.gD .email',            // Gmail sender email
-            '.gD'                    // Gmail sender area
+            '.gD .g2 span[email]',           // Gmail sender email attribute
+            '.gD .g2 .email',                // Gmail sender email class
+            '.gD .g2',                       // Gmail sender container
+            '.gD span[email]',               // Gmail sender span
+            '.gD .email',                    // Gmail sender email
+            '.gD',                           // Gmail sender area
+            'span[email]',                   // Email attribute
+            '.email',                        // Email class
+            'a[href*="mailto:"]'             // Mailto link
         ];
         
         for (const selector of senderSelectors) {
@@ -592,7 +552,7 @@ function extractEmailFromElement(element, index) {
             }
         }
         
-        // Extract date from this specific element - IMPROVED SELECTORS
+        // Extract date from this specific .gE element - IMPROVED SELECTORS
         let date = 'Unknown Date';
         
         const dateSelectors = [
@@ -636,7 +596,7 @@ function extractEmailFromElement(element, index) {
             subject = subjectEl.textContent?.trim() || 'No Subject';
         }
         
-        // Extract body preview from this element - IMPROVED
+        // Extract body preview from this .gE element - IMPROVED
         let bodyPreview = 'No content';
         const bodyEl = element.querySelector('.a3s, .email-body, .message-body');
         if (bodyEl) {
@@ -681,16 +641,16 @@ function getSelectedEmailData(selectedIndex) {
         
         const selectedEmail = threadResult.emails[selectedIndex];
         
-        // Extract full content from the selected email element
+        // Extract full content from the selected .gE element
         const element = selectedEmail.element;
         
-        // Get full body content
+        // Get full body content from .gE element
         let body = 'No content found';
         const bodySelectors = [
-            '.a3s',
-            '.email-body',
-            '.message-body',
-            '.mail-message'
+            '.a3s',           // Gmail message body
+            '.email-body',    // Generic email body
+            '.message-body',  // Generic message body
+            '.mail-message'   // Generic mail message
         ];
         
         for (const selector of bodySelectors) {
@@ -701,7 +661,15 @@ function getSelectedEmailData(selectedIndex) {
             }
         }
         
-        // Get attachments from this specific email
+        // If no body found in selectors, use element's text content
+        if (body === 'No content found') {
+            const elementText = element.textContent?.trim() || '';
+            if (elementText.length > 50) {
+                body = elementText;
+            }
+        }
+        
+        // Get attachments from this specific .gE element
         const attachmentElements = element.querySelectorAll('.aZo, .attachment, .file-attachment, [data-attachment-id]');
         const attachments = Array.from(attachmentElements).map(el => {
             let name = 'Unknown Attachment';
