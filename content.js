@@ -450,29 +450,372 @@ function getOpenEmail() {
     }
 }
 
+// Add this function after getOpenEmail() function
+
+function getAllEmailsInThread() {
+    try {
+        console.log('Detecting all emails in conversation thread...');
+        
+        // Gmail conversation thread selectors - UPDATED FOR BETTER DETECTION
+        const emailSelectors = [
+            '.h7',                    // Gmail thread email container
+            '.gE',                    // Gmail expanded email
+            '.h5',                    // Gmail email message
+            '.thread-message',        // Generic thread message
+            '[data-message-id]',      // Message with ID
+            '.adn',                   // Gmail message container
+            '.a3s',                   // Gmail message body container
+            '.gE .adn',               // Gmail expanded message
+            '.h7 .adn'                // Gmail thread message
+        ];
+        
+        let emailElements = [];
+        
+        // Try each selector to find email elements
+        for (const selector of emailSelectors) {
+            const elements = document.querySelectorAll(selector);
+            if (elements.length > 0) {
+                console.log(`Found ${elements.length} elements with selector: ${selector}`);
+                emailElements = Array.from(elements);
+                break;
+            }
+        }
+        
+        // If no specific selectors work, try Gmail's conversation structure
+        if (emailElements.length === 0) {
+            console.log('No elements found with specific selectors, trying Gmail conversation structure...');
+            
+            // Look for Gmail's conversation thread structure
+            const conversationContainer = document.querySelector('.thread');
+            if (conversationContainer) {
+                // Find individual message containers within the conversation
+                const messageContainers = conversationContainer.querySelectorAll('.adn, .gE, .h5, .h7');
+                if (messageContainers.length > 0) {
+                    emailElements = Array.from(messageContainers);
+                    console.log(`Found ${emailElements.length} message containers in conversation`);
+                }
+            }
+            
+            // If still no elements, try to find by content structure
+            if (emailElements.length === 0) {
+                console.log('Trying content-based detection...');
+                
+                // Look for elements that contain email headers (sender + date patterns)
+                const allElements = document.querySelectorAll('div, span, td');
+                emailElements = Array.from(allElements).filter(el => {
+                    const text = el.textContent?.trim() || '';
+                    
+                    // Check if element contains email header patterns
+                    const hasEmailHeader = text.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/) && 
+                                         text.match(/(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|\d{1,2}\/\d{1,2}\/\d{2,4}|\d{1,2}:\d{2}\s*(AM|PM)|Yesterday|Today|Mon|Tue|Wed|Thu|Fri|Sat|Sun)/i);
+                    
+                    // Check if element has reasonable size (not too small, not too large)
+                    const reasonableSize = text.length > 20 && text.length < 500;
+                    
+                    // Check if element contains message content
+                    const hasMessageContent = text.includes('Hi ') || text.includes('Hello ') || text.includes('Thank you') || text.includes('Awesome');
+                    
+                    return hasEmailHeader && reasonableSize && hasMessageContent;
+                });
+                
+                console.log(`Found ${emailElements.length} elements via content-based detection`);
+            }
+        }
+        
+        // Filter out elements that are too small or don't contain email-like content
+        emailElements = emailElements.filter(el => {
+            const text = el.textContent?.trim() || '';
+            return text.length > 30 && text.length < 1000; // Reasonable size
+        });
+        
+        console.log(`After filtering: ${emailElements.length} email elements`);
+        
+        // Extract email data from each element
+        const emails = emailElements.map((element, index) => {
+            return extractEmailFromElement(element, index);
+        }).filter(email => email && email.sender !== 'Unknown Sender'); // Filter out invalid emails
+        
+        console.log(`Detected ${emails.length} emails in thread:`, emails.map(e => ({ sender: e.sender, date: e.date })));
+        
+        return {
+            success: true,
+            emails: emails,
+            totalCount: emails.length
+        };
+        
+    } catch (error) {
+        console.error('Error detecting thread emails:', error);
+        return { success: false, error: error.message };
+    }
+}
+
+// Helper function to extract email data from a specific element
+function extractEmailFromElement(element, index) {
+    try {
+        console.log(`Extracting email data from element ${index}:`, element.textContent?.substring(0, 100));
+        
+        // Extract sender from this specific element
+        let sender = 'Unknown Sender';
+        
+        // Look for sender within this element - IMPROVED SELECTORS
+        const senderSelectors = [
+            'span[email]',           // Email attribute
+            '.email',                // Email class
+            'a[href*="mailto:"]',    // Mailto link
+            '.gD .g2 span[email]',  // Gmail sender email attribute
+            '.gD .g2 .email',        // Gmail sender email class
+            '.gD .g2',               // Gmail sender container
+            '.gD span[email]',       // Gmail sender span
+            '.gD .email',            // Gmail sender email
+            '.gD'                    // Gmail sender area
+        ];
+        
+        for (const selector of senderSelectors) {
+            const senderEl = element.querySelector(selector);
+            if (senderEl) {
+                const email = senderEl.getAttribute('email') || senderEl.textContent?.trim();
+                if (email && email.includes('@') && !email.includes('noreply') && !email.includes('no-reply')) {
+                    sender = email;
+                    console.log(`Found sender via selector ${selector}: ${sender}`);
+                    break;
+                }
+            }
+        }
+        
+        // If no sender found in element, try text content with better regex
+        if (sender === 'Unknown Sender') {
+            const text = element.textContent?.trim() || '';
+            const emailMatch = text.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
+            if (emailMatch && !emailMatch[0].includes('noreply') && !emailMatch[0].includes('no-reply')) {
+                sender = emailMatch[0];
+                console.log(`Found sender via text regex: ${sender}`);
+            }
+        }
+        
+        // Extract date from this specific element - IMPROVED SELECTORS
+        let date = 'Unknown Date';
+        
+        const dateSelectors = [
+            '.gK .g3',               // Gmail date
+            '.gK .g4',               // Gmail date alternative
+            '.gK',                   // Gmail date container
+            '.gH .gK .g3',           // Gmail thread date
+            '.gH .gK .g4',           // Gmail thread date alternative
+            '.h5 .gK .g3',           // Gmail expanded email date
+            '.h5 .gK .g4',           // Gmail expanded email date alternative
+            '.date',                 // Generic date
+            '.received-date'         // Generic received date
+        ];
+        
+        for (const selector of dateSelectors) {
+            const dateEl = element.querySelector(selector);
+            if (dateEl && dateEl.textContent.trim()) {
+                const dateText = dateEl.textContent.trim();
+                if (dateText.match(/(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|\d{1,2}\/\d{1,2}\/\d{2,4}|\d{1,2}:\d{2}\s*(AM|PM)|Yesterday|Today|Mon|Tue|Wed|Thu|Fri|Sat|Sun)/i)) {
+                    date = dateText;
+                    console.log(`Found date via selector ${selector}: ${date}`);
+                    break;
+                }
+            }
+        }
+        
+        // If still no date, try to extract from text content
+        if (date === 'Unknown Date') {
+            const text = element.textContent?.trim() || '';
+            const dateMatch = text.match(/(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2},?\s+\d{4}|(Mon|Tue|Wed|Thu|Fri|Sat|Sun),?\s+(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2},?\s+\d{1,2}:\d{2}\s*(AM|PM)/i);
+            if (dateMatch) {
+                date = dateMatch[0];
+                console.log(`Found date via text regex: ${date}`);
+            }
+        }
+        
+        // Extract subject (should be same for all emails in thread)
+        let subject = 'No Subject';
+        const subjectEl = document.querySelector('h2[data-thread-perm-id], .hP, .thread-subject');
+        if (subjectEl) {
+            subject = subjectEl.textContent?.trim() || 'No Subject';
+        }
+        
+        // Extract body preview from this element - IMPROVED
+        let bodyPreview = 'No content';
+        const bodyEl = element.querySelector('.a3s, .email-body, .message-body');
+        if (bodyEl) {
+            const bodyText = bodyEl.textContent?.trim();
+            bodyPreview = bodyText ? bodyText.substring(0, 100) + '...' : 'No content';
+        } else {
+            // If no specific body element, use element's text content
+            const elementText = element.textContent?.trim() || '';
+            if (elementText.length > 50) {
+                bodyPreview = elementText.substring(0, 100) + '...';
+            }
+        }
+        
+        const emailData = {
+            index: index,
+            sender: sender,
+            date: date,
+            subject: subject,
+            bodyPreview: bodyPreview,
+            element: element // Store reference to DOM element for later use
+        };
+        
+        console.log(`Extracted email ${index}:`, emailData);
+        return emailData;
+        
+    } catch (error) {
+        console.error('Error extracting email from element:', error);
+        return null;
+    }
+}
+
+// Function to get selected email data
+function getSelectedEmailData(selectedIndex) {
+    try {
+        console.log(`Getting data for selected email index: ${selectedIndex}`);
+        
+        // Get all emails in thread first
+        const threadResult = getAllEmailsInThread();
+        if (!threadResult.success || !threadResult.emails[selectedIndex]) {
+            return { success: false, error: 'Selected email not found' };
+        }
+        
+        const selectedEmail = threadResult.emails[selectedIndex];
+        
+        // Extract full content from the selected email element
+        const element = selectedEmail.element;
+        
+        // Get full body content
+        let body = 'No content found';
+        const bodySelectors = [
+            '.a3s',
+            '.email-body',
+            '.message-body',
+            '.mail-message'
+        ];
+        
+        for (const selector of bodySelectors) {
+            const bodyEl = element.querySelector(selector);
+            if (bodyEl) {
+                body = bodyEl.textContent?.trim() || 'No content found';
+                break;
+            }
+        }
+        
+        // Get attachments from this specific email
+        const attachmentElements = element.querySelectorAll('.aZo, .attachment, .file-attachment, [data-attachment-id]');
+        const attachments = Array.from(attachmentElements).map(el => {
+            let name = 'Unknown Attachment';
+            let size = 'Unknown Size';
+            let type = 'Unknown Type';
+            
+            const nameSelectors = [
+                '.aZo-name',
+                '.attachment-name',
+                '[data-attachment-name]',
+                '.filename',
+                'span[title]'
+            ];
+            
+            for (const selector of nameSelectors) {
+                const nameEl = el.querySelector(selector);
+                if (nameEl) {
+                    const text = nameEl.textContent?.trim() || nameEl.getAttribute('title') || '';
+                    if (text && text.length < 100) {
+                        name = text;
+                        break;
+                    }
+                }
+            }
+            
+            if (name === 'Unknown Attachment') {
+                const fullText = el.textContent?.trim() || '';
+                const fileMatch = fullText.match(/([a-zA-Z0-9_\-\.\s]+\.(pdf|doc|docx|xls|xlsx|ppt|pptx|txt|jpg|jpeg|png|gif|zip|rar|mp4|mp3|avi|mov))\s/i);
+                if (fileMatch) {
+                    name = fileMatch[1].trim();
+                } else if (fullText.length < 50) {
+                    name = fullText;
+                }
+            }
+            
+            const sizeSelectors = [
+                '.aZo-size',
+                '.attachment-size',
+                '[data-attachment-size]'
+            ];
+            
+            for (const selector of sizeSelectors) {
+                const sizeEl = el.querySelector(selector);
+                if (sizeEl) {
+                    const sizeText = sizeEl.textContent?.trim();
+                    if (sizeText && sizeText.match(/\d+.*[KMG]?B/i)) {
+                        size = sizeText;
+                        break;
+                    }
+                }
+            }
+            
+            return { name, size, type };
+        });
+        
+        return {
+            success: true,
+            subject: selectedEmail.subject,
+            sender: selectedEmail.sender,
+            date: selectedEmail.date,
+            body: body,
+            attachments: attachments,
+            url: window.location.href
+        };
+        
+    } catch (error) {
+        console.error('Error getting selected email data:', error);
+        return { success: false, error: error.message };
+    }
+}
+
 // Listen for messages from popup
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    console.error("Content script received message:", message.action);
+    console.log("Content script received message:", message.action);
     
-    if (message.action === 'getOpenEmail' || message.action === 'getEmail') {
-        const result = getOpenEmail();
-        sendResponse(result);
-    } else if (message.action === 'generatePDF' || message.action === 'generatePDFFromContent') {
-        generatePDFDirectly(message.data) // Don't pass folderHandle here
-            .then(result => sendResponse(result))
-            .catch(error => sendResponse({ error: error.message }));
-        return true; // Keep message channel open
-    } else if (message.action === 'selectFolder') {
-        selectFolder()
-            .then(result => sendResponse(result))
-            .catch(error => sendResponse({ error: error.message }));
-        return true; // Keep message channel open
-    } else if (message.action === 'saveAttachmentToFolder') {
-        saveAttachmentToFolder(message.attachment, message.blob) // Don't pass folderHandle here
-            .then(result => sendResponse(result))
-            .catch(error => sendResponse({ error: error.message }));
-        return true; // Keep message channel open
+    switch (message.action) {
+        case 'getOpenEmail':
+            const result = getOpenEmail();
+            sendResponse(result);
+            break;
+            
+        case 'getAllEmailsInThread':
+            const threadResult = getAllEmailsInThread();
+            sendResponse(threadResult);
+            break;
+            
+        case 'getSelectedEmailData':
+            const selectedResult = getSelectedEmailData(message.selectedIndex);
+            sendResponse(selectedResult);
+            break;
+            
+        case 'generatePDF':
+            generatePDFDirectly(message.data).then(result => {
+                sendResponse(result);
+            });
+            break;
+            
+        case 'selectFolder':
+            selectFolder().then(result => {
+                sendResponse(result);
+            });
+            break;
+            
+        case 'saveAttachmentToFolder':
+            saveAttachmentToFolder(message.attachment, message.blob).then(result => {
+                sendResponse(result);
+            });
+            break;
+            
+        default:
+            sendResponse({ error: 'Unknown action' });
     }
+    
+    return true; // Keep message channel open
 });
 
 // Utility function to sanitize filename
