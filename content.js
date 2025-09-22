@@ -5,6 +5,7 @@ console.error('Erado Gmail Export content script loaded');
 let isGeneratingPDF = false; // Prevent multiple PDF generations
 let currentFolderHandle = null; // Store the FileSystemDirectoryHandle here
 
+// Replace the generatePDFDirectly function with jsPDF implementation
 async function generatePDFDirectly(emailData) {
     // Prevent multiple PDF generations
     if (isGeneratingPDF) {
@@ -20,152 +21,144 @@ async function generatePDFDirectly(emailData) {
     isGeneratingPDF = true;
     
     try {
-        console.error("Generating PDF for:", emailData.subject);
+        console.log("Generating PDF for:", emailData.subject);
         
-        // Create HTML content for PDF
-        const htmlContent = `
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="utf-8">
-    <title>${emailData.subject}</title>
-    <style>
-        @page {
-            margin: 20mm;
-            size: A4;
-        }
-        body {
-            font-family: Arial, sans-serif;
-            line-height: 1.6;
-            color: #333;
-            margin: 0;
-            padding: 20px;
-        }
-        .header {
-            border-bottom: 3px solid #667eea;
-            padding-bottom: 20px;
-            margin-bottom: 30px;
-        }
-        .brand {
-            font-size: 24px;
-            font-weight: bold;
-            color: #667eea;
-            margin-bottom: 10px;
-            text-align: center;
-        }
-        .subject {
-            font-size: 18px;
-            font-weight: bold;
-            color: #333;
-            margin-bottom: 15px;
-        }
-        .meta {
-            color: #666;
-            font-size: 12px;
-            margin-bottom: 10px;
-        }
-        .meta-row {
-            margin-bottom: 5px;
-        }
-        .meta-label {
-            font-weight: bold;
-            display: inline-block;
-            width: 60px;
-        }
-        .body {
-            margin-top: 30px;
-            font-size: 12px;
-            line-height: 1.5;
-            white-space: pre-wrap;
-        }
-        .attachments {
-            margin-top: 30px;
-            padding-top: 20px;
-            border-top: 1px solid #eee;
-        }
-        .attachment-item {
-            background: #f5f5f5;
-            padding: 8px;
-            margin: 5px 0;
-            border-radius: 4px;
-            font-size: 11px;
-        }
-        .footer {
-            margin-top: 40px;
-            padding-top: 20px;
-            border-top: 1px solid #eee;
-            font-size: 10px;
-            color: #999;
-            text-align: center;
-        }
-        @media print {
-            body { margin: 0; }
-            .no-print { display: none; }
-        }
-    </style>
-</head>
-<body>
-    <div class="header">
-        <div class="brand">ERADO GMAIL EXPORT</div>
-        <div class="subject">${emailData.subject}</div>
-        <div class="meta">
-            <div class="meta-row">
-                <span class="meta-label">From:</span> ${emailData.sender}
-            </div>
-            <div class="meta-row">
-                <span class="meta-label">Date:</span> ${emailData.date}
-            </div>
-            <div class="meta-row">
-                <span class="meta-label">URL:</span> ${emailData.url}
-            </div>
-        </div>
-    </div>
-    
-    <div class="body">
-        <strong>Email Content:</strong><br><br>
-        ${emailData.body}
-    </div>
-    
-    ${emailData.attachments && emailData.attachments.length > 0 ? `
-    <div class="attachments">
-        <strong>Attachments (${emailData.attachments.length}):</strong><br><br>
-        ${emailData.attachments.map(att => `
-            <div class="attachment-item">
-                • ${att.name}${att.size ? ` (${att.size})` : ''}${att.type ? ` - ${att.type}` : ''}
-            </div>
-        `).join('')}
-    </div>
-    ` : ''}
-    
-    <div class="footer">
-        Exported by Erado Gmail Export on ${new Date().toLocaleString()}
-    </div>
-</body>
-</html>`;
+        // Load jsPDF library dynamically
+        await loadJsPDFLibrary();
         
-        // Create blob from HTML content
-        const blob = new Blob([htmlContent], { type: 'text/html' });
+        // Generate PDF using jsPDF
+        const pdfBlob = await generatePDFWithJsPDF(emailData);
         
-        // Save to user-selected folder using the stored handle
-        const filename = `erado-export-${sanitizeFilename(emailData.subject)}.html`;
+        // Save PDF to selected folder
+        const filename = `erado-email-${sanitizeFilename(emailData.subject)}-${Date.now()}.pdf`;
         const fileHandle = await currentFolderHandle.getFileHandle(filename, { create: true });
         const writable = await fileHandle.createWritable();
-        await writable.write(blob);
+        await writable.write(pdfBlob);
         await writable.close();
         
-        console.error('PDF saved to user-selected folder:', filename);
-        
+        console.log(`PDF saved: ${filename}`);
         return { success: true, filename: filename };
         
     } catch (error) {
         console.error('Error generating PDF:', error);
-        return { error: error.message };
+        return { success: false, error: error.message };
     } finally {
-        // Reset the flag after a delay
-        setTimeout(() => {
-            isGeneratingPDF = false;
-        }, 3000);
+        isGeneratingPDF = false;
     }
+}
+
+function loadJsPDFLibrary() {
+    return new Promise((resolve) => {
+        if (window.jspdf) {
+            console.log('jsPDF library already loaded');
+            resolve();
+            return;
+        }
+        
+        const checkJsPDF = () => {
+            if (window.jspdf) {
+                console.log('jsPDF library loaded successfully');
+                resolve();
+            } else {
+                console.log('Waiting for jsPDF library to load...');
+                setTimeout(checkJsPDF, 100);
+            }
+        };
+        
+        checkJsPDF();
+    });
+}
+
+async function generatePDFWithJsPDF(emailData) {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    
+    // Set up PDF styling
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const margin = 20;
+    const contentWidth = pageWidth - (margin * 2);
+    let yPosition = 20;
+    
+    // Helper function to add text with word wrapping
+    function addText(text, fontSize = 12, isBold = false, color = '#000000') {
+        doc.setFontSize(fontSize);
+        doc.setFont('helvetica', isBold ? 'bold' : 'normal');
+        doc.setTextColor(color);
+        
+        const lines = doc.splitTextToSize(text, contentWidth);
+        doc.text(lines, margin, yPosition);
+        yPosition += lines.length * (fontSize * 0.4) + 5;
+        
+        // Check if we need a new page
+        if (yPosition > doc.internal.pageSize.getHeight() - 20) {
+            doc.addPage();
+            yPosition = 20;
+        }
+    }
+    
+    // Add header
+    addText('ERADO EMAIL EXPORT', 18, true, '#667eea');
+    addText(`Generated on ${new Date().toLocaleString()}`, 10, false, '#666666');
+    
+    // Add separator line
+    yPosition += 10;
+    doc.setDrawColor(102, 126, 234);
+    doc.setLineWidth(2);
+    doc.line(margin, yPosition, pageWidth - margin, yPosition);
+    yPosition += 15;
+    
+    // Add email information
+    addText('EMAIL INFORMATION', 14, true, '#333333');
+    yPosition += 5;
+    
+    addText(`Subject: ${emailData.subject || 'No Subject'}`, 12, true);
+    addText(`From: ${emailData.sender || 'Unknown Sender'}`, 12, true);
+    addText(`Date: ${emailData.date || 'Unknown Date'}`, 12, true);
+    addText(`URL: ${emailData.url || 'N/A'}`, 10, false, '#666666');
+    
+    yPosition += 10;
+    
+    // Add email body
+    addText('EMAIL CONTENT', 14, true, '#333333');
+    yPosition += 5;
+    
+    // Strip HTML tags and clean up the body content
+    let bodyText = emailData.body || 'No content found';
+    bodyText = bodyText.replace(/<[^>]*>/g, ''); // Remove HTML tags
+    bodyText = bodyText.replace(/&nbsp;/g, ' '); // Replace &nbsp; with spaces
+    bodyText = bodyText.replace(/&amp;/g, '&'); // Replace &amp; with &
+    bodyText = bodyText.replace(/&lt;/g, '<'); // Replace &lt; with <
+    bodyText = bodyText.replace(/&gt;/g, '>'); // Replace &gt; with >
+    bodyText = bodyText.replace(/&quot;/g, '"'); // Replace &quot; with "
+    bodyText = bodyText.replace(/&#39;/g, "'"); // Replace &#39; with '
+    
+    addText(bodyText, 11, false);
+    
+    // Add attachments if any
+    if (emailData.attachments && emailData.attachments.length > 0) {
+        yPosition += 15;
+        addText('ATTACHMENTS', 14, true, '#333333');
+        yPosition += 5;
+        
+        emailData.attachments.forEach((attachment, index) => {
+            addText(`${index + 1}. ${attachment.name}`, 11, true);
+            if (attachment.downloadUrl) {
+                addText(`   Download URL: ${attachment.downloadUrl}`, 9, false, '#666666');
+            }
+        });
+    }
+    
+    // Add footer
+    const pageCount = doc.internal.getNumberOfPages();
+    for (let i = 1; i <= pageCount; i++) {
+        doc.setPage(i);
+        doc.setFontSize(8);
+        doc.setTextColor('#999999');
+        doc.text(`Page ${i} of ${pageCount}`, pageWidth - 30, doc.internal.pageSize.getHeight() - 10);
+    }
+    
+    // Generate PDF blob
+    return doc.output('blob');
 }
 
 // Select folder function
@@ -613,12 +606,20 @@ function getSelectedEmailData(selectedIndex) {
         const selectedEmail = threadResult.emails[selectedIndex];
         const element = selectedEmail.element;
         
-        // Get full body content from .a3s element
+        // Get full body content from .a3s element, specifically looking for LTR div
         let body = 'No content found';
         const bodyEl = element.querySelector('.a3s');
         if (bodyEl) {
-            body = bodyEl.textContent?.trim() || 'No content found';
-            console.log(`Found full body via .a3s:`, body.substring(0, 200));
+            // Look for the LTR div within .a3s
+            const ltrDiv = bodyEl.querySelector('div[dir="ltr"]');
+            if (ltrDiv) {
+                body = ltrDiv.innerHTML; // Use innerHTML to preserve formatting
+                console.log(`Found LTR div content:`, body.substring(0, 200));
+            } else {
+                // Fallback to full .a3s content if no LTR div found
+                body = bodyEl.innerHTML;
+                console.log(`No LTR div found, using full .a3s content:`, body.substring(0, 200));
+            }
         }
         
         // Get attachments from this specific .adn element

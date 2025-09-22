@@ -12,7 +12,8 @@
     ],
     "host_permissions": [
         "https://mail.google.com/*",
-        "https://www.googleapis.com/*"
+        "https://www.googleapis.com/*",
+        "https://cdnjs.cloudflare.com/*"
     ],
     "oauth2": {
         "client_id": "492880103895-ehud6iot1gkn9n42nh7lr29bjesfql6r.apps.googleusercontent.com",
@@ -37,14 +38,13 @@
     "content_scripts": [
         {
             "matches": ["https://mail.google.com/*"],
-            "js": ["content.js"],
-            "run_at": "document_end"
+            "js": ["jspdf.umd.min.js", "content.js"]
         }
     ],
     "web_accessible_resources": [
         {
             "resources": ["icons/*"],
-            "matches": ["https://mail.google.com/*"]
+            "matches": ["<all_urls>"]
         }
     ]
 }
