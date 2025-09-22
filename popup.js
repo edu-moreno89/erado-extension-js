@@ -276,7 +276,7 @@ async function exportEmail() {
     exportEmailBtn.disabled = false;
 }
 
-// Update the exportAttachments function to show progress notifications
+// Update the exportAttachments function with better debugging
 async function exportAttachments() {
     if (!currentEmailData) {
         showStatus('Please detect an email first', 'error');
@@ -288,11 +288,14 @@ async function exportAttachments() {
         return;
     }
     
+    console.log('Starting attachment download for:', currentEmailData.attachments);
+    
     exportAttachmentsBtn.disabled = true;
-    showStatus('Authenticating...', 'info');
+    showStatus('Downloading attachments...', 'info');
     
     try {
-        // Authenticate first
+        // First authenticate to ensure we have a token
+        console.log('Authenticating...');
         const authResult = await authenticate();
         if (!authResult.success) {
             showStatus(`Authentication failed: ${authResult.error}`, 'error');
@@ -300,15 +303,20 @@ async function exportAttachments() {
             return;
         }
         
-        showStatus('Downloading attachments...', 'info');
+        console.log('Authentication successful, starting download...');
         
-        // Download attachments
-        const response = await chrome.runtime.sendMessage({
-            action: 'downloadAttachments',
-            emailData: currentEmailData
+        // Try direct download through content script
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        console.log('Sending message to content script...');
+        
+        const directResponse = await chrome.tabs.sendMessage(tab.id, {
+            action: 'downloadAttachmentsDirectly',
+            attachments: currentEmailData.attachments
         });
         
-        if (response.success) {
+        console.log('Content script response:', directResponse);
+        
+        if (directResponse.success) {
             showStatus(`Downloaded ${currentEmailData.attachments.length} attachments successfully`, 'success');
             
             // Show folder notification after successful download
@@ -319,8 +327,9 @@ async function exportAttachments() {
                 }
             }, 2000);
         } else {
-            showStatus(`Download failed: ${response?.error || 'Unknown error'}`, 'error');
+            showStatus(`Download failed: ${directResponse?.error || 'Unknown error'}`, 'error');
         }
+        
     } catch (error) {
         console.error('Error downloading attachments:', error);
         showStatus(`Error: ${error.message}`, 'error');

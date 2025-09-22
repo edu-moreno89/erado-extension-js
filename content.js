@@ -694,11 +694,54 @@ function getSelectedEmailData(selectedIndex) {
     }
 }
 
+// Add a function to download attachments directly using URLs
+async function downloadAttachmentsDirectly(attachments) {
+    if (!attachments || attachments.length === 0) {
+        return { success: false, error: 'No attachments found' };
+    }
+    
+    // If no custom folder selected, show folder picker
+    if (!currentFolderHandle) {
+        console.log('No custom folder selected, showing folder picker...');
+        const folderResult = await selectFolder();
+        if (!folderResult.success) {
+            return { success: false, error: 'No folder selected' };
+        }
+    }
+    
+    try {
+        console.log('Starting direct attachment download for', attachments.length, 'attachments');
+        
+        // Send to background script for authenticated download
+        const response = await chrome.runtime.sendMessage({
+            action: 'downloadAttachments',
+            emailData: { attachments: attachments }
+        });
+        
+        if (response.success) {
+            console.log('All attachments downloaded successfully');
+            return { success: true };
+        } else {
+            console.error('Background download failed:', response.error);
+            return { success: false, error: response.error };
+        }
+        
+    } catch (error) {
+        console.error('Error downloading attachments:', error);
+        return { success: false, error: error.message };
+    }
+}
+
 // Listen for messages from popup
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    console.log("Content script received message:", message.action);
+    console.log("Content script received message:", message.action, message);
     
     switch (message.action) {
+        case 'getFolderStatus':
+            const folderStatus = getFolderStatus();
+            sendResponse(folderStatus);
+            break;
+            
         case 'getOpenEmail':
             const result = getOpenEmail();
             sendResponse(result);
@@ -732,12 +775,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             });
             return true; // Keep message channel open for async response
             
-        case 'getFolderStatus':
-            const folderStatus = getFolderStatus();
-            sendResponse(folderStatus);
-            break;
+        case 'downloadAttachmentsDirectly':
+            console.log('Processing downloadAttachmentsDirectly with attachments:', message.attachments);
+            downloadAttachmentsDirectly(message.attachments).then(result => {
+                console.log('downloadAttachmentsDirectly result:', result);
+                sendResponse(result);
+            });
+            return true; // Keep message channel open for async response
             
         default:
+            console.log('Unknown action:', message.action);
             sendResponse({ error: 'Unknown action' });
     }
     
@@ -904,18 +951,4 @@ function getDateString() {
     const day = String(now.getDate()).padStart(2, '0'); // DD
     const year = now.getFullYear(); // YYYY
     return `${month}-${day}-${year}`;
-}
-
-// Update the helper function to include time and milliseconds
-function getDateTimeString() {
-    const now = new Date();
-    const month = String(now.getMonth() + 1).padStart(2, '0'); // MM
-    const day = String(now.getDate()).padStart(2, '0'); // DD
-    const year = now.getFullYear(); // YYYY
-    const hours = String(now.getHours()).padStart(2, '0'); // HH
-    const minutes = String(now.getMinutes()).padStart(2, '0'); // MM
-    const seconds = String(now.getSeconds()).padStart(2, '0'); // SS
-    const milliseconds = String(now.getMilliseconds()).padStart(3, '0'); // mmm
-    
-    return `${month}-${day}-${year}_${hours}${minutes}${seconds}_${milliseconds}`;
 }
