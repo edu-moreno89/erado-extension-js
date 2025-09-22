@@ -3,6 +3,8 @@ console.log('Erado Gmail Export popup script loaded');
 
 // State
 let currentEmailData = null;
+let threadEmails = [];
+let selectedEmailIndex = 0;
 let selectedFolder = null;
 let isFolderSelected = false;
 
@@ -41,7 +43,7 @@ document.addEventListener('DOMContentLoaded', () => {
     checkFolderStatus();
 });
 
-// Check if folder is already selected
+// Update the checkFolderStatus function to show full path
 async function checkFolderStatus() {
     try {
         const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -51,13 +53,21 @@ async function checkFolderStatus() {
             selectedFolder = response.folderName;
             isFolderSelected = true;
             updateFolderButton();
+            showStatus(`Using folder: ${selectedFolder}`, 'info');
+        } else {
+            selectedFolder = null;
+            isFolderSelected = false;
+            updateFolderButton();
         }
     } catch (error) {
-        console.log('No folder selected yet, will use default Downloads folder');
+        console.log('No folder selected yet');
+        selectedFolder = null;
+        isFolderSelected = false;
+        updateFolderButton();
     }
 }
 
-// Select folder
+// Update the selectFolder function to show full path
 async function selectFolder() {
     selectFolderBtn.disabled = true;
     showStatus('Selecting folder...', 'info');
@@ -70,7 +80,7 @@ async function selectFolder() {
             selectedFolder = response.folderName;
             isFolderSelected = true;
             updateFolderButton();
-            showStatus(`Folder selected: ${response.folderName}`, 'success');
+            showStatus(`Using folder: ${selectedFolder}`, 'success');
         } else {
             showStatus(`Error: ${response.error}`, 'error');
         }
@@ -91,21 +101,43 @@ function updateFolderButton() {
     }
 }
 
-// Detect email
+// Detect email and thread
 async function detectEmail() {
     detectEmailBtn.disabled = true;
-    showStatus('Detecting email...', 'info');
+    showStatus('Detecting email and thread...', 'info');
     
     try {
         const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-        const response = await chrome.tabs.sendMessage(tab.id, { action: 'getOpenEmail' });
         
-        if (response.success) {
-            currentEmailData = response;
-            updateEmailUI(response);
-            showStatus('Email detected successfully', 'success');
+        if (!tab.url.includes('mail.google.com')) {
+            showStatus('Please open Gmail first', 'error');
+            detectEmailBtn.disabled = false;
+            return;
+        }
+        
+        // Detect all emails in thread
+        const response = await chrome.tabs.sendMessage(tab.id, { action: 'getAllEmailsInThread' });
+        
+        if (response && response.success) {
+            threadEmails = response.emails;
+            console.log('Thread emails detected:', threadEmails);
+            
+            if (threadEmails.length === 1) {
+                // Single email - no selection needed
+                currentEmailData = await getSelectedEmailData(0);
+                showEmailInfo(currentEmailData);
+                hideEmailList();
+                enableButtons();
+                showStatus(`Single email detected: ${currentEmailData.sender}`, 'success');
+            } else if (threadEmails.length > 1) {
+                // Multiple emails - show selection UI
+                showEmailList(threadEmails);
+                showStatus(`${threadEmails.length} emails found in thread. Please select one.`, 'info');
+            } else {
+                showStatus('No emails found in thread', 'error');
+            }
         } else {
-            showStatus(`Error: ${response.error}`, 'error');
+            showStatus(`Error detecting thread: ${response?.error || 'Unknown error'}`, 'error');
         }
     } catch (error) {
         console.error('Error detecting email:', error);
@@ -115,20 +147,98 @@ async function detectEmail() {
     detectEmailBtn.disabled = false;
 }
 
-// Update email UI
-function updateEmailUI(emailData) {
+// Show email list for selection
+function showEmailList(emails) {
+    emailItems.innerHTML = '';
+    
+    emails.forEach((email, index) => {
+        const emailItem = document.createElement('div');
+        emailItem.className = 'email-item';
+        emailItem.dataset.index = index;
+        
+        emailItem.innerHTML = `
+            <input type="radio" name="emailSelect" class="email-checkbox" ${index === 0 ? 'checked' : ''}>
+            <div class="email-details">
+                <div class="email-sender">${email.sender} ${email.attachmentCount > 0 ? `(${email.attachmentCount} attachments)` : ''}</div>
+                <div class="email-date">${email.date}</div>
+                <div class="email-preview">${email.bodyPreview}</div>
+            </div>
+        `;
+        
+        emailItem.addEventListener('click', () => selectEmail(index));
+        emailItems.appendChild(emailItem);
+    });
+    
+    emailList.classList.remove('hidden');
+    emailInfo.classList.add('hidden');
+    
+    // Select first email by default
+    selectEmail(0);
+}
+
+// Hide email list
+function hideEmailList() {
+    emailList.classList.add('hidden');
+    emailInfo.classList.remove('hidden');
+}
+
+// Select email from list
+async function selectEmail(index) {
+    selectedEmailIndex = index;
+    
+    // Update UI
+    document.querySelectorAll('.email-item').forEach((item, i) => {
+        if (i === index) {
+            item.classList.add('selected');
+            item.querySelector('input[type="radio"]').checked = true;
+        } else {
+            item.classList.remove('selected');
+            item.querySelector('input[type="radio"]').checked = false;
+        }
+    });
+    
+    // Get selected email data
+    currentEmailData = await getSelectedEmailData(index);
+    showStatus(`Selected email: ${currentEmailData.sender}`, 'success');
+    enableButtons();
+}
+
+// Get selected email data
+async function getSelectedEmailData(index) {
+    try {
+        const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        const response = await chrome.tabs.sendMessage(tab.id, { 
+            action: 'getSelectedEmailData', 
+            selectedIndex: index 
+        });
+        
+        if (response && response.success) {
+            return response;
+        } else {
+            throw new Error(response?.error || 'Failed to get email data');
+        }
+    } catch (error) {
+        console.error('Error getting selected email data:', error);
+        throw error;
+    }
+}
+
+// Show email info
+function showEmailInfo(emailData) {
     emailSubject.textContent = emailData.subject;
     emailSender.textContent = emailData.sender;
     emailDate.textContent = emailData.date;
-    emailAttachments.textContent = emailData.attachments ? emailData.attachments.length : 0;
-    
-    // Enable export buttons
+    emailAttachments.textContent = `${emailData.attachments ? emailData.attachments.length : 0} attachment(s)`;
+}
+
+// Enable/disable buttons
+function enableButtons() {
     exportEmailBtn.disabled = false;
-    exportAttachmentsBtn.disabled = !emailData.attachments || emailData.attachments.length === 0;
+    exportAttachmentsBtn.disabled = !currentEmailData.attachments || currentEmailData.attachments.length === 0;
     exportAllBtn.disabled = false;
 }
 
-// Export email as PDF
+// Update the exportEmail function to show progress notifications
 async function exportEmail() {
     if (!currentEmailData) {
         showStatus('Please detect an email first', 'error');
@@ -147,6 +257,14 @@ async function exportEmail() {
         
         if (response.success) {
             showStatus(`PDF exported successfully: ${response.filename}`, 'success');
+            
+            // Show folder notification after successful export
+            setTimeout(async () => {
+                await checkFolderStatus();
+                if (isFolderSelected) {
+                    showStatus(`Using folder: ${selectedFolder}`, 'info');
+                }
+            }, 2000);
         } else {
             showStatus(`PDF export failed: ${response?.error || 'Unknown error'}`, 'error');
         }
@@ -158,7 +276,7 @@ async function exportEmail() {
     exportEmailBtn.disabled = false;
 }
 
-// Export attachments
+// Update the exportAttachments function to show progress notifications
 async function exportAttachments() {
     if (!currentEmailData) {
         showStatus('Please detect an email first', 'error');
@@ -192,6 +310,14 @@ async function exportAttachments() {
         
         if (response.success) {
             showStatus(`Downloaded ${currentEmailData.attachments.length} attachments successfully`, 'success');
+            
+            // Show folder notification after successful download
+            setTimeout(async () => {
+                await checkFolderStatus();
+                if (isFolderSelected) {
+                    showStatus(`Using folder: ${selectedFolder}`, 'info');
+                }
+            }, 2000);
         } else {
             showStatus(`Download failed: ${response?.error || 'Unknown error'}`, 'error');
         }
@@ -203,7 +329,7 @@ async function exportAttachments() {
     exportAttachmentsBtn.disabled = false;
 }
 
-// Export all (PDF + attachments)
+// Update the exportAll function to show progress notifications
 async function exportAll() {
     if (!currentEmailData) {
         showStatus('Please detect an email first', 'error');
@@ -223,6 +349,14 @@ async function exportAll() {
         }
         
         showStatus('All exports completed successfully', 'success');
+        
+        // Show final folder notification
+        setTimeout(async () => {
+            await checkFolderStatus();
+            if (isFolderSelected) {
+                showStatus(`Using folder: ${selectedFolder}`, 'info');
+            }
+        }, 3000);
     } catch (error) {
         console.error('Error exporting all:', error);
         showStatus(`Error: ${error.message}`, 'error');

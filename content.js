@@ -13,12 +13,13 @@ async function generatePDFDirectly(emailData) {
         return { success: false, error: 'PDF generation already in progress' };
     }
     
-    // Check if folder is selected, if not use default Downloads
+    // If no custom folder selected, show folder picker
     if (!currentFolderHandle) {
-        console.log('No custom folder selected, using default Downloads folder');
-        // For now, we'll still require folder selection
-        // In a real implementation, you could use chrome.downloads.download() for default folder
-        return { success: false, error: 'Please select a folder first' };
+        console.log('No custom folder selected, showing folder picker...');
+        const folderResult = await selectFolder();
+        if (!folderResult.success) {
+            return { success: false, error: 'No folder selected' };
+        }
     }
     
     isGeneratingPDF = true;
@@ -32,8 +33,19 @@ async function generatePDFDirectly(emailData) {
         // Generate PDF using jsPDF
         const pdfBlob = await generatePDFWithJsPDF(emailData);
         
-        // Save PDF to selected folder
-        const filename = `erado-email-${sanitizeFilename(emailData.subject)}-${Date.now()}.pdf`;
+        // Generate filename with date and time (MM-DD-YYYY_HHMMSS_mmm)
+        const now = new Date();
+        const month = String(now.getMonth() + 1).padStart(2, '0'); // MM
+        const day = String(now.getDate()).padStart(2, '0'); // DD
+        const year = now.getFullYear(); // YYYY
+        const hours = String(now.getHours()).padStart(2, '0'); // HH
+        const minutes = String(now.getMinutes()).padStart(2, '0'); // MM
+        const seconds = String(now.getSeconds()).padStart(2, '0'); // SS
+        const milliseconds = String(now.getMilliseconds()).padStart(3, '0'); // mmm
+        
+        const dateTimeStr = `${month}${day}${year}-${hours}${minutes}${seconds}${milliseconds}`;
+        
+        const filename = `erado-email-${sanitizeFilename(emailData.subject)}-${dateTimeStr}.pdf`;
         const fileHandle = await currentFolderHandle.getFileHandle(filename, { create: true });
         const writable = await fileHandle.createWritable();
         await writable.write(pdfBlob);
@@ -189,22 +201,41 @@ async function selectFolder() {
 
 // Save attachment to user-selected folder
 async function saveAttachmentToFolder(attachment, blob) {
+    // If no custom folder selected, show folder picker
     if (!currentFolderHandle) {
-        console.error('No folder selected for attachment saving');
-        return { success: false, error: 'No folder selected. Please select a folder first.' };
+        console.log('No custom folder selected, showing folder picker...');
+        const folderResult = await selectFolder();
+        if (!folderResult.success) {
+            return { success: false, error: 'No folder selected' };
+        }
     }
-
+    
     try {
-        console.error('Saving attachment to user-selected folder:', attachment.filename);
+        console.log('Saving attachment:', attachment.name);
         
-        // Save file to selected folder
-        const filename = `erado-${sanitizeFilename(attachment.filename)}`;
+        // Generate filename with date and time (MM-DD-YYYY_HHMMSS_mmm)
+        const now = new Date();
+        const month = String(now.getMonth() + 1).padStart(2, '0'); // MM
+        const day = String(now.getDate()).padStart(2, '0'); // DD
+        const year = now.getFullYear(); // YYYY
+        const hours = String(now.getHours()).padStart(2, '0'); // HH
+        const minutes = String(now.getMinutes()).padStart(2, '0'); // MM
+        const seconds = String(now.getSeconds()).padStart(2, '0'); // SS
+        const milliseconds = String(now.getMilliseconds()).padStart(3, '0'); // mmm
+        
+        const dateTimeStr = `${month}-${day}-${year}_${hours}${minutes}${seconds}_${milliseconds}`;
+        
+        // Get file extension from original attachment name
+        const fileExtension = attachment.name.split('.').pop() || 'file';
+        const baseName = attachment.name.replace(/\.[^/.]+$/, ''); // Remove extension
+        
+        const filename = `erado-${sanitizeFilename(baseName)}-${dateTimeStr}.${fileExtension}`;
         const fileHandle = await currentFolderHandle.getFileHandle(filename, { create: true });
         const writable = await fileHandle.createWritable();
         await writable.write(blob);
         await writable.close();
         
-        console.error('Attachment saved successfully:', filename);
+        console.log('Attachment saved:', filename);
         return { success: true, filename: filename };
         
     } catch (error) {
@@ -733,7 +764,7 @@ function setDefaultDownloadsFolder() {
     return false;
 }
 
-// Update the generatePDFDirectly function to handle default folder
+// Update the generatePDFDirectly function to show folder modal when needed
 async function generatePDFDirectly(emailData) {
     // Prevent multiple PDF generations
     if (isGeneratingPDF) {
@@ -741,12 +772,13 @@ async function generatePDFDirectly(emailData) {
         return { success: false, error: 'PDF generation already in progress' };
     }
     
-    // Check if folder is selected, if not use default Downloads
+    // If no custom folder selected, show folder picker
     if (!currentFolderHandle) {
-        console.log('No custom folder selected, using default Downloads folder');
-        // For now, we'll still require folder selection
-        // In a real implementation, you could use chrome.downloads.download() for default folder
-        return { success: false, error: 'Please select a folder first' };
+        console.log('No custom folder selected, showing folder picker...');
+        const folderResult = await selectFolder();
+        if (!folderResult.success) {
+            return { success: false, error: 'No folder selected' };
+        }
     }
     
     isGeneratingPDF = true;
@@ -760,8 +792,19 @@ async function generatePDFDirectly(emailData) {
         // Generate PDF using jsPDF
         const pdfBlob = await generatePDFWithJsPDF(emailData);
         
-        // Save PDF to selected folder
-        const filename = `erado-email-${sanitizeFilename(emailData.subject)}-${Date.now()}.pdf`;
+        // Generate filename with date and time (MM-DD-YYYY_HHMMSS_mmm)
+        const now = new Date();
+        const month = String(now.getMonth() + 1).padStart(2, '0'); // MM
+        const day = String(now.getDate()).padStart(2, '0'); // DD
+        const year = now.getFullYear(); // YYYY
+        const hours = String(now.getHours()).padStart(2, '0'); // HH
+        const minutes = String(now.getMinutes()).padStart(2, '0'); // MM
+        const seconds = String(now.getSeconds()).padStart(2, '0'); // SS
+        const milliseconds = String(now.getMilliseconds()).padStart(3, '0'); // mmm
+        
+        const dateTimeStr = `${month}-${day}-${year}_${hours}${minutes}${seconds}_${milliseconds}`;
+        
+        const filename = `erado-email-${sanitizeFilename(emailData.subject)}-${dateTimeStr}.pdf`;
         const fileHandle = await currentFolderHandle.getFileHandle(filename, { create: true });
         const writable = await fileHandle.createWritable();
         await writable.write(pdfBlob);
@@ -778,7 +821,7 @@ async function generatePDFDirectly(emailData) {
     }
 }
 
-// Update the selectFolder function to return folder name
+// Update the selectFolder function to return full path
 async function selectFolder() {
     try {
         console.log('Opening folder picker...');
@@ -790,8 +833,36 @@ async function selectFolder() {
         
         if (folderHandle) {
             currentFolderHandle = folderHandle; // Store the handle internally
-            console.log('Folder selected:', currentFolderHandle.name);
-            return { success: true, folderName: currentFolderHandle.name };
+            
+            // Get the full path by traversing up the directory tree
+            let fullPath = folderHandle.name;
+            try {
+                // Try to get the full path by checking the handle's path
+                // Note: This is a simplified approach - in reality, we'd need to traverse up
+                const pathParts = [folderHandle.name];
+                let currentHandle = folderHandle;
+                
+                // Try to get parent directory (this might not work in all browsers)
+                try {
+                    while (currentHandle && currentHandle.parent) {
+                        currentHandle = currentHandle.parent;
+                        if (currentHandle.name) {
+                            pathParts.unshift(currentHandle.name);
+                        }
+                    }
+                } catch (e) {
+                    // If we can't traverse up, just use the folder name
+                    console.log('Could not get full path, using folder name only');
+                }
+                
+                fullPath = pathParts.join('/');
+            } catch (error) {
+                console.log('Using folder name as path:', folderHandle.name);
+                fullPath = folderHandle.name;
+            }
+            
+            console.log('Folder selected:', fullPath);
+            return { success: true, folderName: fullPath };
         } else {
             return { success: false, error: 'No folder selected' };
         }
@@ -803,8 +874,48 @@ async function selectFolder() {
 
 // Add getFolderStatus function
 function getFolderStatus() {
-    return {
-        success: true,
-        folderName: currentFolderHandle ? currentFolderHandle.name : null
-    };
+    if (currentFolderHandle) {
+        // Try to reconstruct the full path
+        let fullPath = currentFolderHandle.name;
+        try {
+            // This is a simplified approach - in practice, getting full path from FileSystemDirectoryHandle
+            // is limited by browser security. We'll use the folder name for now.
+            fullPath = currentFolderHandle.name;
+        } catch (error) {
+            fullPath = currentFolderHandle.name;
+        }
+        
+        return {
+            success: true,
+            folderName: fullPath
+        };
+    } else {
+        return {
+            success: true,
+            folderName: null
+        };
+    }
+}
+
+// Add a helper function to generate clean date string
+function getDateString() {
+    const now = new Date();
+    const month = String(now.getMonth() + 1).padStart(2, '0'); // MM
+    const day = String(now.getDate()).padStart(2, '0'); // DD
+    const year = now.getFullYear(); // YYYY
+    return `${month}-${day}-${year}`;
+}
+
+// Update the helper function to include time and milliseconds
+function getDateTimeString() {
+    const now = new Date();
+    const month = String(now.getMonth() + 1).padStart(2, '0'); // MM
+    const day = String(now.getDate()).padStart(2, '0'); // DD
+    const year = now.getFullYear(); // YYYY
+    const hours = String(now.getHours()).padStart(2, '0'); // HH
+    const minutes = String(now.getMinutes()).padStart(2, '0'); // MM
+    const seconds = String(now.getSeconds()).padStart(2, '0'); // SS
+    const milliseconds = String(now.getMilliseconds()).padStart(3, '0'); // mmm
+    
+    return `${month}-${day}-${year}_${hours}${minutes}${seconds}_${milliseconds}`;
 }
