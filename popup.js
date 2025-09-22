@@ -264,7 +264,7 @@ function showEmailList(emails) {
         emailItem.innerHTML = `
             <input type="radio" name="emailSelect" class="email-checkbox" ${index === 0 ? 'checked' : ''}>
             <div class="email-details">
-                <div class="email-sender">${email.sender}</div>
+                <div class="email-sender">${email.sender} ${email.attachmentCount > 0 ? `(${email.attachmentCount} attachments)` : ''}</div>
                 <div class="email-date">${email.date}</div>
                 <div class="email-preview">${email.bodyPreview}</div>
             </div>
@@ -404,4 +404,3 @@ async function selectFolder() {
         return false;
     }
 }
-  
