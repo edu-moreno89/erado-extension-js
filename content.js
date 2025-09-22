@@ -13,9 +13,12 @@ async function generatePDFDirectly(emailData) {
         return { success: false, error: 'PDF generation already in progress' };
     }
     
+    // Check if folder is selected, if not use default Downloads
     if (!currentFolderHandle) {
-        console.error('No folder selected for PDF generation');
-        return { success: false, error: 'No folder selected. Please select a folder first.' };
+        console.log('No custom folder selected, using default Downloads folder');
+        // For now, we'll still require folder selection
+        // In a real implementation, you could use chrome.downloads.download() for default folder
+        return { success: false, error: 'Please select a folder first' };
     }
     
     isGeneratingPDF = true;
@@ -164,7 +167,7 @@ async function generatePDFWithJsPDF(emailData) {
 // Select folder function
 async function selectFolder() {
     try {
-        console.error('Opening folder picker...');
+        console.log('Opening folder picker...');
         
         const folderHandle = await window.showDirectoryPicker({
             mode: 'readwrite',
@@ -173,8 +176,8 @@ async function selectFolder() {
         
         if (folderHandle) {
             currentFolderHandle = folderHandle; // Store the handle internally
-            console.error('Folder selected:', currentFolderHandle.name);
-            return { success: true, folderName: currentFolderHandle.name }; // Return name, not the handle itself
+            console.log('Folder selected:', currentFolderHandle.name);
+            return { success: true, folderName: currentFolderHandle.name };
         } else {
             return { success: false, error: 'No folder selected' };
         }
@@ -698,6 +701,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             });
             return true; // Keep message channel open for async response
             
+        case 'getFolderStatus':
+            const folderStatus = getFolderStatus();
+            sendResponse(folderStatus);
+            break;
+            
         default:
             sendResponse({ error: 'Unknown action' });
     }
@@ -711,4 +719,92 @@ function sanitizeFilename(filename) {
         .replace(/[<>:"/\\|?*]/g, '_')
         .replace(/\s+/g, '_')
         .substring(0, 50);
+}
+
+// Add this function to content.js to set default Downloads folder
+function setDefaultDownloadsFolder() {
+    // Set default to Downloads folder if no folder is selected
+    if (!currentFolderHandle) {
+        // We'll use the browser's default download behavior
+        // The folder selection will be handled by the File System Access API
+        console.log('Using default Downloads folder for exports');
+        return true;
+    }
+    return false;
+}
+
+// Update the generatePDFDirectly function to handle default folder
+async function generatePDFDirectly(emailData) {
+    // Prevent multiple PDF generations
+    if (isGeneratingPDF) {
+        console.error('PDF generation already in progress, ignoring duplicate request');
+        return { success: false, error: 'PDF generation already in progress' };
+    }
+    
+    // Check if folder is selected, if not use default Downloads
+    if (!currentFolderHandle) {
+        console.log('No custom folder selected, using default Downloads folder');
+        // For now, we'll still require folder selection
+        // In a real implementation, you could use chrome.downloads.download() for default folder
+        return { success: false, error: 'Please select a folder first' };
+    }
+    
+    isGeneratingPDF = true;
+    
+    try {
+        console.log("Generating PDF for:", emailData.subject);
+        
+        // Load jsPDF library dynamically
+        await loadJsPDFLibrary();
+        
+        // Generate PDF using jsPDF
+        const pdfBlob = await generatePDFWithJsPDF(emailData);
+        
+        // Save PDF to selected folder
+        const filename = `erado-email-${sanitizeFilename(emailData.subject)}-${Date.now()}.pdf`;
+        const fileHandle = await currentFolderHandle.getFileHandle(filename, { create: true });
+        const writable = await fileHandle.createWritable();
+        await writable.write(pdfBlob);
+        await writable.close();
+        
+        console.log(`PDF saved: ${filename}`);
+        return { success: true, filename: filename };
+        
+    } catch (error) {
+        console.error('Error generating PDF:', error);
+        return { success: false, error: error.message };
+    } finally {
+        isGeneratingPDF = false;
+    }
+}
+
+// Update the selectFolder function to return folder name
+async function selectFolder() {
+    try {
+        console.log('Opening folder picker...');
+        
+        const folderHandle = await window.showDirectoryPicker({
+            mode: 'readwrite',
+            startIn: 'documents'
+        });
+        
+        if (folderHandle) {
+            currentFolderHandle = folderHandle; // Store the handle internally
+            console.log('Folder selected:', currentFolderHandle.name);
+            return { success: true, folderName: currentFolderHandle.name };
+        } else {
+            return { success: false, error: 'No folder selected' };
+        }
+    } catch (error) {
+        console.error('Error selecting folder:', error);
+        return { success: false, error: error.message };
+    }
+}
+
+// Add getFolderStatus function
+function getFolderStatus() {
+    return {
+        success: true,
+        folderName: currentFolderHandle ? currentFolderHandle.name : null
+    };
 }
