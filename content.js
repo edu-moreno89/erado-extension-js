@@ -732,6 +732,124 @@ async function downloadAttachmentsDirectly(attachments) {
     }
 }
 
+// Add function to download attachments directly to custom folder using blob
+async function downloadAttachmentsToCustomFolder(attachments, customFolderPath) {
+    try {
+        console.log(`Downloading ${attachments.length} attachments directly to custom folder`);
+        
+        // If no custom folder selected, show folder picker
+        if (!currentFolderHandle) {
+            console.log('No custom folder selected, showing folder picker...');
+            const folderResult = await selectFolder();
+            if (!folderResult.success) {
+                return { success: false, error: 'No folder selected' };
+            }
+        }
+        
+        let successCount = 0;
+        let errorCount = 0;
+        
+        // Download each attachment directly to custom folder
+        for (const attachment of attachments) {
+            if (attachment.downloadUrl) {
+                try {
+                    console.log(`Downloading attachment: ${attachment.name}`);
+                    
+                    // Clean the URL
+                    const cleanedUrl = cleanAttachmentUrl(attachment.downloadUrl);
+                    console.log(`Cleaned URL: ${cleanedUrl}`);
+                    
+                    if (!cleanedUrl) {
+                        console.error(`Invalid URL for ${attachment.name}`);
+                        errorCount++;
+                        continue;
+                    }
+                    
+                    // Fetch the attachment content as blob
+                    const response = await fetch(cleanedUrl, {
+                        method: 'GET',
+                        headers: {
+                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+                        }
+                    });
+                    
+                    if (!response.ok) {
+                        console.error(`Failed to download ${attachment.name}: ${response.status} ${response.statusText}`);
+                        errorCount++;
+                        continue;
+                    }
+                    
+                    const blob = await response.blob();
+                    console.log(`Downloaded ${attachment.name}: ${blob.size} bytes`);
+                    
+                    // Save to custom folder
+                    const saveResult = await saveAttachmentToFolder(attachment, blob);
+                    if (saveResult.success) {
+                        successCount++;
+                        console.log(`Successfully saved ${attachment.name} to custom folder`);
+                    } else {
+                        errorCount++;
+                        console.error(`Failed to save ${attachment.name}: ${saveResult.error}`);
+                    }
+                    
+                } catch (error) {
+                    console.error(`Error downloading ${attachment.name}:`, error);
+                    errorCount++;
+                }
+            } else {
+                console.warn(`No download URL for attachment: ${attachment.name}`);
+                errorCount++;
+            }
+        }
+        
+        const message = `Downloaded ${successCount} of ${attachments.length} attachments successfully`;
+        console.log(message);
+        
+        return { 
+            success: successCount > 0, 
+            message: message,
+            successCount: successCount,
+            errorCount: errorCount
+        };
+        
+    } catch (error) {
+        console.error('Error downloading attachments to custom folder:', error);
+        return { success: false, error: error.message };
+    }
+}
+
+// Add cleanAttachmentUrl function to content.js
+function cleanAttachmentUrl(url) {
+    if (!url) return null;
+    
+    console.log('Cleaning URL:', url);
+    
+    // Remove MIME type and filename prefix: "mimeType:filename:https://..."
+    // This handles cases like:
+    // "image/png:noname:https://..."
+    // "application/pdf:001(02-05-2025).pdf:https://..."
+    const urlMatch = url.match(/^[^:]+:[^:]+:(https?:\/\/.+)$/);
+    if (urlMatch) {
+        url = urlMatch[1];
+        console.log('Removed MIME type and filename prefix:', url);
+    }
+    
+    // Fix double https:// prefix if it exists
+    if (url.includes('https://mail.google.com/mail/u/0/https://mail.google.com/mail/u/0')) {
+        url = url.replace('https://mail.google.com/mail/u/0/https://mail.google.com/mail/u/0', 'https://mail.google.com/mail/u/0');
+        console.log('Fixed double prefix:', url);
+    }
+    
+    // Ensure it's a valid URL
+    if (url.startsWith('http')) {
+        console.log('Final cleaned URL:', url);
+        return url;
+    }
+    
+    console.log('Invalid URL after cleaning:', url);
+    return null;
+}
+
 // Listen for messages from popup
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     console.log("Content script received message:", message.action, message);
@@ -776,9 +894,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             return true; // Keep message channel open for async response
             
         case 'downloadAttachmentsDirectly':
-            console.log('Processing downloadAttachmentsDirectly with attachments:', message.attachments);
             downloadAttachmentsDirectly(message.attachments).then(result => {
-                console.log('downloadAttachmentsDirectly result:', result);
+                sendResponse(result);
+            });
+            return true; // Keep message channel open for async response
+            
+        case 'downloadAttachmentsToCustomFolder':
+            downloadAttachmentsToCustomFolder(message.attachments, message.customFolderPath).then(result => {
                 sendResponse(result);
             });
             return true; // Keep message channel open for async response
@@ -919,7 +1041,7 @@ async function selectFolder() {
     }
 }
 
-// Add getFolderStatus function
+// Fix the getFolderStatus function to return folderPath instead of folderName
 function getFolderStatus() {
     if (currentFolderHandle) {
         // Try to reconstruct the full path
@@ -934,11 +1056,13 @@ function getFolderStatus() {
         
         return {
             success: true,
-            folderName: fullPath
+            folderPath: fullPath,  // Changed from folderName to folderPath
+            folderName: fullPath   // Keep both for compatibility
         };
     } else {
         return {
-            success: true,
+            success: false,  // Changed from true to false when no folder
+            folderPath: null,
             folderName: null
         };
     }

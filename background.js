@@ -28,7 +28,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return true; // Keep message channel open
 });
 
-// Download attachments using Chrome tabs
+// Download attachments by fetching content and saving to custom folder
 async function handleDownloadAttachments(emailData, sendResponse) {
     try {
         console.log('Downloading attachments for:', emailData.subject);
@@ -39,49 +39,44 @@ async function handleDownloadAttachments(emailData, sendResponse) {
             return;
         }
         
-        console.log(`Opening ${emailData.attachments.length} attachment(s) in new tabs for download`);
+        // Find Gmail tab specifically (not just active tab, because folder picker might be active)
+        const tabs = await chrome.tabs.query({ url: 'https://mail.google.com/*' });
         
-        const openedTabs = [];
-
-        // Open each attachment URL in a new tab
-        for (const attachment of emailData.attachments) {
-            if (attachment.downloadUrl) {
-                try {
-                    console.log(`Opening attachment: ${attachment.name} - ${attachment.downloadUrl}`);
-                    
-                    const url = cleanAttachmentUrl(attachment.downloadUrl);
-                    console.log(`Cleaned URL: ${url}`);
-
-                    const tab = await chrome.tabs.create({
-                        url: url,
-                        active: false
-                    });
-
-                    openedTabs.push(tab.id);
-                    
-                    await new Promise(resolve => setTimeout(resolve, 500));
-                    
-                } catch (error) {
-                    console.error(`Error opening tab for ${attachment.name}:`, error);
-                }
-            } else {
-                console.warn(`No download URL for attachment: ${attachment.name}`);
-            }
+        if (!tabs || tabs.length === 0) {
+            console.error('No Gmail tab found');
+            sendResponse({ error: 'No Gmail tab found. Please open Gmail and try again.' });
+            return;
         }
-
-        // Auto-close tabs after 3 seconds
-        setTimeout(async () => {
-            for (const tabId of openedTabs) {
-                try {
-                    await chrome.tabs.remove(tabId);
-                    console.log(`Closed tab ${tabId}`);
-                } catch (error) {
-                    console.log(`Tab ${tabId} already closed or couldn't be closed`);
-                }
-            }
-        }, 3000);
         
-        sendResponse({ success: true, message: `Opened ${emailData.attachments.length} attachment(s) in new tabs` });
+        // Use the first Gmail tab (or you could find the most recently used one)
+        const gmailTab = tabs[0];
+        console.log('Found Gmail tab:', gmailTab.id, gmailTab.url);
+        
+        const folderResponse = await chrome.tabs.sendMessage(gmailTab.id, { action: 'getFolderStatus' });
+        
+        if (!folderResponse || !folderResponse.folderPath) {
+            sendResponse({ error: 'No custom folder selected. Please select a folder first.' });
+            return;
+        }
+        
+        console.log('Custom folder path:', folderResponse.folderPath);
+        
+        // Send attachments to content script for direct download to custom folder
+        const downloadResult = await chrome.tabs.sendMessage(gmailTab.id, {
+            action: 'downloadAttachmentsToCustomFolder',
+            attachments: emailData.attachments,
+            customFolderPath: folderResponse.folderPath
+        });
+        
+        if (downloadResult.success) {
+            sendResponse({ 
+                success: true, 
+                message: `Downloaded ${emailData.attachments.length} attachment(s) to custom folder`,
+                downloadCount: emailData.attachments.length
+            });
+        } else {
+            sendResponse({ error: downloadResult.error });
+        }
         
     } catch (error) {
         console.error('Error downloading attachments:', error);
@@ -93,21 +88,3 @@ async function handleDownloadAttachments(emailData, sendResponse) {
 chrome.runtime.onInstalled.addListener(() => {
     console.log('Erado Gmail Export extension installed');
 });
-
-// Add a helper function to clean attachment URLs
-function cleanAttachmentUrl(url) {
-    if (!url) return null;
-    
-    const urlMatch = url.match(/^[^:]+:[^:]+:(https?:\/\/.+)$/);
-
-    if (urlMatch) {
-        url = urlMatch[1];
-    }
-
-    if (url.includes('https://mail.google.com/mail/u/0/https://mail.google.com/mail/u/0')) {
-        url = url.replace('https://mail.google.com/mail/u/0/https://mail.google.com/mail/u/0', 'https://mail.google.com/mail/u/0');
-        console.log('Fixed double prefix:', url);
-    }
-    
-    return url;
-}
