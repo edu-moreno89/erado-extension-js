@@ -88,12 +88,10 @@ class SimplePDFGenerator {
         doc.text(urlText, margin + 20, yPosition);
         yPosition += 15;
         
-        // Add separator
         doc.setDrawColor(200, 200, 200);
         doc.line(margin, yPosition, pageWidth - margin, yPosition);
         yPosition += 15;
         
-        // Add email body
         doc.setFontSize(14);
         doc.setFont(undefined, 'bold');
         doc.text('Email Content:', margin, yPosition);
@@ -102,10 +100,9 @@ class SimplePDFGenerator {
         doc.setFontSize(11);
         doc.setFont(undefined, 'normal');
         
-        // Clean HTML content for PDF
         const cleanBody = emailData.body
-            .replace(/<[^>]*>/g, '') // Remove HTML tags
-            .replace(/&nbsp;/g, ' ') // Replace HTML entities
+            .replace(/<[^>]*>/g, '')
+            .replace(/&nbsp;/g, ' ')
             .replace(/&amp;/g, '&')
             .replace(/&lt;/g, '<')
             .replace(/&gt;/g, '>')
@@ -114,7 +111,6 @@ class SimplePDFGenerator {
         
         const bodyLines = doc.splitTextToSize(cleanBody, contentWidth);
         
-        // Check if we need a new page
         if (yPosition + (bodyLines.length * 5) > doc.internal.pageSize.getHeight() - 50) {
             doc.addPage();
             yPosition = 30;
@@ -123,9 +119,7 @@ class SimplePDFGenerator {
         doc.text(bodyLines, margin, yPosition);
         yPosition += (bodyLines.length * 5) + 15;
         
-        // Add attachments if any
         if (emailData.attachments && emailData.attachments.length > 0) {
-            // Check if we need a new page
             if (yPosition + 50 > doc.internal.pageSize.getHeight() - 50) {
                 doc.addPage();
                 yPosition = 30;
@@ -151,26 +145,21 @@ class SimplePDFGenerator {
             });
         }
         
-        // Add footer
         doc.setFontSize(10);
         doc.setTextColor(128, 128, 128);
         doc.text(`Exported by Erado Gmail Export on ${new Date().toLocaleString()}`, margin, doc.internal.pageSize.getHeight() - 20);
         
-        // Generate PDF blob
         const pdfBlob = doc.output('blob');
         
-        // Create download link
         const url = URL.createObjectURL(pdfBlob);
         const downloadLink = document.createElement('a');
         downloadLink.href = url;
         downloadLink.download = `erado-export-${sanitizeFilename(emailData.subject)}.pdf`;
         downloadLink.style.display = 'none';
         
-        // Add to page and trigger download
         document.body.appendChild(downloadLink);
         downloadLink.click();
         
-        // Clean up
         document.body.removeChild(downloadLink);
         URL.revokeObjectURL(url);
         
@@ -178,5 +167,4 @@ class SimplePDFGenerator {
     }
 }
 
-// Global PDF generator instance
 window.pdfGenerator = new SimplePDFGenerator();

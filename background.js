@@ -1,17 +1,13 @@
-// Erado Gmail Export - Background Service Worker
 console.log('Erado Gmail Export background script loaded');
 
-// Gmail API configuration
 const GMAIL_API_BASE = 'https://gmail.googleapis.com/gmail/v1/users/me';
 let accessToken = null;
 
-// Handle messages from popup and content scripts
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     console.log('Background received message:', message.action);
     
     switch (message.action) {
         case 'setToken':
-            // Store the token properly
             accessToken = message.token;
             console.log('Token stored in background script');
             sendResponse({ success: true });
@@ -25,10 +21,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             sendResponse({ error: 'Unknown action' });
     }
     
-    return true; // Keep message channel open
+    return true;
 });
 
-// Download attachments by fetching content and saving to custom folder
 async function handleDownloadAttachments(emailData, sendResponse) {
     try {
         console.log('Downloading attachments for:', emailData.subject);
@@ -39,7 +34,6 @@ async function handleDownloadAttachments(emailData, sendResponse) {
             return;
         }
         
-        // Find Gmail tab specifically (not just active tab, because folder picker might be active)
         const tabs = await chrome.tabs.query({ url: 'https://mail.google.com/*' });
         
         if (!tabs || tabs.length === 0) {
@@ -48,7 +42,6 @@ async function handleDownloadAttachments(emailData, sendResponse) {
             return;
         }
         
-        // Use the first Gmail tab (or you could find the most recently used one)
         const gmailTab = tabs[0];
         console.log('Found Gmail tab:', gmailTab.id, gmailTab.url);
         
@@ -61,7 +54,6 @@ async function handleDownloadAttachments(emailData, sendResponse) {
         
         console.log('Custom folder path:', folderResponse.folderPath);
         
-        // Send attachments to content script for direct download to custom folder
         const downloadResult = await chrome.tabs.sendMessage(gmailTab.id, {
             action: 'downloadAttachmentsToCustomFolder',
             attachments: emailData.attachments,
@@ -84,7 +76,6 @@ async function handleDownloadAttachments(emailData, sendResponse) {
     }
 }
 
-// Handle extension installation
 chrome.runtime.onInstalled.addListener(() => {
     console.log('Erado Gmail Export extension installed');
 });

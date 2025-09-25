@@ -1,19 +1,14 @@
-// Erado Gmail Export - Content Script
 console.error('Erado Gmail Export content script loaded');
 
-// Generate PDF using Chrome's native print functionality
-let isGeneratingPDF = false; // Prevent multiple PDF generations
-let currentFolderHandle = null; // Store the FileSystemDirectoryHandle here
+let isGeneratingPDF = false;
+let currentFolderHandle = null;
 
-// Replace the generatePDFDirectly function with jsPDF implementation
 async function generatePDFDirectly(emailData) {
-    // Prevent multiple PDF generations
     if (isGeneratingPDF) {
         console.error('PDF generation already in progress, ignoring duplicate request');
         return { success: false, error: 'PDF generation already in progress' };
     }
     
-    // If no custom folder selected, show folder picker
     if (!currentFolderHandle) {
         console.log('No custom folder selected, showing folder picker...');
         const folderResult = await selectFolder();
@@ -27,21 +22,18 @@ async function generatePDFDirectly(emailData) {
     try {
         console.log("Generating PDF for:", emailData.subject);
         
-        // Load jsPDF library dynamically
         await loadJsPDFLibrary();
         
-        // Generate PDF using jsPDF
         const pdfBlob = await generatePDFWithJsPDF(emailData);
         
-        // Generate filename with date and time (MM-DD-YYYY_HHMMSS_mmm)
         const now = new Date();
-        const month = String(now.getMonth() + 1).padStart(2, '0'); // MM
-        const day = String(now.getDate()).padStart(2, '0'); // DD
-        const year = now.getFullYear(); // YYYY
-        const hours = String(now.getHours()).padStart(2, '0'); // HH
-        const minutes = String(now.getMinutes()).padStart(2, '0'); // MM
-        const seconds = String(now.getSeconds()).padStart(2, '0'); // SS
-        const milliseconds = String(now.getMilliseconds()).padStart(3, '0'); // mmm
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const day = String(now.getDate()).padStart(2, '0');
+        const year = now.getFullYear();
+        const hours = String(now.getHours()).padStart(2, '0');
+        const minutes = String(now.getMinutes()).padStart(2, '0');
+        const seconds = String(now.getSeconds()).padStart(2, '0');
+        const milliseconds = String(now.getMilliseconds()).padStart(3, '0');
         
         const dateTimeStr = `${month}${day}${year}-${hours}${minutes}${seconds}${milliseconds}`;
         
@@ -88,13 +80,11 @@ async function generatePDFWithJsPDF(emailData) {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF();
     
-    // Set up PDF styling
     const pageWidth = doc.internal.pageSize.getWidth();
     const margin = 20;
     const contentWidth = pageWidth - (margin * 2);
     let yPosition = 20;
     
-    // Helper function to add text with word wrapping
     function addText(text, fontSize = 12, isBold = false, color = '#000000') {
         doc.setFontSize(fontSize);
         doc.setFont('helvetica', isBold ? 'bold' : 'normal');
@@ -104,25 +94,21 @@ async function generatePDFWithJsPDF(emailData) {
         doc.text(lines, margin, yPosition);
         yPosition += lines.length * (fontSize * 0.4) + 5;
         
-        // Check if we need a new page
         if (yPosition > doc.internal.pageSize.getHeight() - 20) {
             doc.addPage();
             yPosition = 20;
         }
     }
     
-    // Add header
     addText('ERADO EMAIL EXPORT', 18, true, '#667eea');
     addText(`Generated on ${new Date().toLocaleString()}`, 10, false, '#666666');
     
-    // Add separator line
     yPosition += 10;
     doc.setDrawColor(102, 126, 234);
     doc.setLineWidth(2);
     doc.line(margin, yPosition, pageWidth - margin, yPosition);
     yPosition += 15;
     
-    // Add email information
     addText('EMAIL INFORMATION', 14, true, '#333333');
     yPosition += 5;
     
@@ -133,23 +119,20 @@ async function generatePDFWithJsPDF(emailData) {
     
     yPosition += 10;
     
-    // Add email body
     addText('EMAIL CONTENT', 14, true, '#333333');
     yPosition += 5;
     
-    // Strip HTML tags and clean up the body content
     let bodyText = emailData.body || 'No content found';
-    bodyText = bodyText.replace(/<[^>]*>/g, ''); // Remove HTML tags
-    bodyText = bodyText.replace(/&nbsp;/g, ' '); // Replace &nbsp; with spaces
-    bodyText = bodyText.replace(/&amp;/g, '&'); // Replace &amp; with &
-    bodyText = bodyText.replace(/&lt;/g, '<'); // Replace &lt; with <
-    bodyText = bodyText.replace(/&gt;/g, '>'); // Replace &gt; with >
-    bodyText = bodyText.replace(/&quot;/g, '"'); // Replace &quot; with "
-    bodyText = bodyText.replace(/&#39;/g, "'"); // Replace &#39; with '
+    bodyText = bodyText.replace(/<[^>]*>/g, '');
+    bodyText = bodyText.replace(/&nbsp;/g, ' ');
+    bodyText = bodyText.replace(/&amp;/g, '&');
+    bodyText = bodyText.replace(/&lt;/g, '<');
+    bodyText = bodyText.replace(/&gt;/g, '>');
+    bodyText = bodyText.replace(/&quot;/g, '"');
+    bodyText = bodyText.replace(/&#39;/g, "'");
     
     addText(bodyText, 11, false);
     
-    // Add attachments if any
     if (emailData.attachments && emailData.attachments.length > 0) {
         yPosition += 15;
         addText('ATTACHMENTS', 14, true, '#333333');
@@ -163,7 +146,6 @@ async function generatePDFWithJsPDF(emailData) {
         });
     }
     
-    // Add footer
     const pageCount = doc.internal.getNumberOfPages();
     for (let i = 1; i <= pageCount; i++) {
         doc.setPage(i);
@@ -172,11 +154,9 @@ async function generatePDFWithJsPDF(emailData) {
         doc.text(`Page ${i} of ${pageCount}`, pageWidth - 30, doc.internal.pageSize.getHeight() - 10);
     }
     
-    // Generate PDF blob
     return doc.output('blob');
 }
 
-// Select folder function
 async function selectFolder() {
     try {
         console.log('Opening folder picker...');
@@ -187,7 +167,7 @@ async function selectFolder() {
         });
         
         if (folderHandle) {
-            currentFolderHandle = folderHandle; // Store the handle internally
+            currentFolderHandle = folderHandle;
             console.log('Folder selected:', currentFolderHandle.name);
             return { success: true, folderName: currentFolderHandle.name };
         } else {
@@ -199,9 +179,7 @@ async function selectFolder() {
     }
 }
 
-// Save attachment to user-selected folder
 async function saveAttachmentToFolder(attachment, blob) {
-    // If no custom folder selected, show folder picker
     if (!currentFolderHandle) {
         console.log('No custom folder selected, showing folder picker...');
         const folderResult = await selectFolder();
@@ -213,21 +191,19 @@ async function saveAttachmentToFolder(attachment, blob) {
     try {
         console.log('Saving attachment:', attachment.name);
         
-        // Generate filename with date and time (MM-DD-YYYY_HHMMSS_mmm)
         const now = new Date();
-        const month = String(now.getMonth() + 1).padStart(2, '0'); // MM
-        const day = String(now.getDate()).padStart(2, '0'); // DD
-        const year = now.getFullYear(); // YYYY
-        const hours = String(now.getHours()).padStart(2, '0'); // HH
-        const minutes = String(now.getMinutes()).padStart(2, '0'); // MM
-        const seconds = String(now.getSeconds()).padStart(2, '0'); // SS
-        const milliseconds = String(now.getMilliseconds()).padStart(3, '0'); // mmm
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const day = String(now.getDate()).padStart(2, '0');
+        const year = now.getFullYear();
+        const hours = String(now.getHours()).padStart(2, '0');
+        const minutes = String(now.getMinutes()).padStart(2, '0');
+        const seconds = String(now.getSeconds()).padStart(2, '0');
+        const milliseconds = String(now.getMilliseconds()).padStart(3, '0');
         
         const dateTimeStr = `${month}-${day}-${year}_${hours}${minutes}${seconds}_${milliseconds}`;
         
-        // Get file extension from original attachment name
         const fileExtension = attachment.name.split('.').pop() || 'file';
-        const baseName = attachment.name.replace(/\.[^/.]+$/, ''); // Remove extension
+        const baseName = attachment.name.replace(/\.[^/.]+$/, '');
         
         const filename = `erado-${sanitizeFilename(baseName)}-${dateTimeStr}.${fileExtension}`;
         const fileHandle = await currentFolderHandle.getFileHandle(filename, { create: true });
@@ -244,12 +220,10 @@ async function saveAttachmentToFolder(attachment, blob) {
     }
 }
 
-// Get open email data - SIMPLIFIED VERSION
 function getOpenEmail() {
     try {
         console.log('Detecting email...');
         
-        // Extract subject
         const subjectSelectors = [
             'h2[data-thread-perm-id]',
             '.hP',
@@ -268,28 +242,24 @@ function getOpenEmail() {
             }
         }
         
-        // Extract sender - FIXED VERSION with better Gmail selectors
         let sender = 'Unknown Sender';
         
         console.log('Starting sender detection...');
         
-        // Method 1: Look for sender in Gmail's email header area
         const senderSelectors = [
-            '.gD .g2 span[email]',           // Gmail sender email attribute
-            '.gD .g2 .email',                // Gmail sender email class
-            '.gD .g2',                       // Gmail sender container
-            '.gD span[email]',               // Gmail sender span
-            '.gD .email',                    // Gmail sender email
-            '.gD'                            // Gmail sender area
+            '.gD .g2 span[email]',
+            '.gD .g2 .email',
+            '.gD .g2',
+            '.gD span[email]',
+            '.gD .email',
+            '.gD'
         ];
         
         for (const selector of senderSelectors) {
             const element = document.querySelector(selector);
             if (element) {
-                // Try to get email from attribute first
                 let email = element.getAttribute('email');
                 
-                // If no email attribute, try text content
                 if (!email) {
                     const text = element.textContent?.trim();
                     if (text && text.includes('@') && !text.includes('noreply') && !text.includes('no-reply')) {
@@ -305,7 +275,6 @@ function getOpenEmail() {
             }
         }
         
-        // Method 2: If still no sender, look for email patterns in the page
         if (sender === 'Unknown Sender') {
             console.log('No sender found via selectors, trying email pattern search...');
             const pageText = document.body.textContent;
@@ -313,7 +282,6 @@ function getOpenEmail() {
             const emails = pageText.match(emailRegex);
             
             if (emails && emails.length > 0) {
-                // Filter out system emails
                 const filteredEmails = emails.filter(email => 
                     !email.includes('noreply') && 
                     !email.includes('no-reply') && 
@@ -333,21 +301,19 @@ function getOpenEmail() {
         
         console.log('Final sender detected:', sender);
         
-        // Extract date - FIXED VERSION with better Gmail selectors
         let date = 'Unknown Date';
         
         console.log('Starting date detection...');
         
-        // Method 1: Look for date in Gmail's email header area
         const dateSelectors = [
-            '.gH .gK .g3',                   // Gmail thread date (most specific)
-            '.gH .gK .g4',                   // Gmail thread date alternative
-            '.h5 .gK .g3',                   // Gmail expanded email date
-            '.h5 .gK .g4',                   // Gmail expanded email date alternative
-            '.gH .gK',                       // Gmail date container
-            '.h5 .gK',                       // Gmail date container alternative
-            '.g2 .gK',                       // Gmail date (fallback)
-            '.yW .gK'                        // Gmail date (fallback)
+            '.gH .gK .g3',
+            '.gH .gK .g4',
+            '.h5 .gK .g3',
+            '.h5 .gK .g4',
+            '.gH .gK',
+            '.h5 .gK',
+            '.g2 .gK',
+            '.yW .gK'
         ];
         
         for (const selector of dateSelectors) {
@@ -355,7 +321,6 @@ function getOpenEmail() {
             if (element && element.textContent.trim()) {
                 const dateText = element.textContent.trim();
                 
-                // Validate that it looks like a date, not sender info
                 if (dateText.match(/(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|\d{1,2}\/\d{1,2}\/\d{2,4}|\d{1,2}:\d{2}\s*(AM|PM)|Yesterday|Today|Mon|Tue|Wed|Thu|Fri|Sat|Sun)/i)) {
                     date = dateText;
                     console.log('Found date via selector:', selector, date);
@@ -366,7 +331,6 @@ function getOpenEmail() {
             }
         }
         
-        // Method 2: If still no date, try to find any date-like text in the page
         if (date === 'Unknown Date') {
             console.log('No date found via selectors, trying date pattern search...');
             const pageText = document.body.textContent;
@@ -380,7 +344,6 @@ function getOpenEmail() {
         
         console.log('Final date detected:', date);
         
-        // Extract body
         const bodySelectors = [
             '.a3s',
             '.email-body',
@@ -397,52 +360,45 @@ function getOpenEmail() {
             }
         }
         
-        // Extract attachments - IMPROVED VERSION
         const attachmentElements = document.querySelectorAll('.aZo, .attachment, .file-attachment, [data-attachment-id]');
         const attachments = Array.from(attachmentElements).map(el => {
-            // Try to get clean filename from specific selectors
             let name = 'Unknown Attachment';
             let size = 'Unknown Size';
             let type = 'Unknown Type';
             
-            // Try different selectors for filename
             const nameSelectors = [
-                '.aZo-name',           // Gmail attachment name
-                '.attachment-name',    // Generic attachment name
-                '[data-attachment-name]', // Data attribute
-                '.filename',            // Generic filename
-                'span[title]'           // Title attribute
+                '.aZo-name',
+                '.attachment-name',
+                '[data-attachment-name]',
+                '.filename',
+                'span[title]'
             ];
             
             for (const selector of nameSelectors) {
                 const nameEl = el.querySelector(selector);
                 if (nameEl) {
                     const text = nameEl.textContent?.trim() || nameEl.getAttribute('title') || '';
-                    if (text && text.length < 100) { // Avoid very long concatenated text
+                    if (text && text.length < 100) {
                         name = text;
                         break;
                     }
                 }
             }
             
-            // If still no good name, try to extract from the element's text content
             if (name === 'Unknown Attachment') {
                 const fullText = el.textContent?.trim() || '';
-                // Look for common file extensions to extract filename
                 const fileMatch = fullText.match(/([a-zA-Z0-9_\-\.\s]+\.(pdf|doc|docx|xls|xlsx|ppt|pptx|txt|jpg|jpeg|png|gif|zip|rar|mp4|mp3|avi|mov))\s/i);
                 if (fileMatch) {
                     name = fileMatch[1].trim();
                 } else if (fullText.length < 50) {
-                    // If text is short, use it as filename
                     name = fullText;
                 }
             }
             
-            // Try different selectors for size
             const sizeSelectors = [
-                '.aZo-size',           // Gmail attachment size
-                '.attachment-size',     // Generic attachment size
-                '[data-attachment-size]' // Data attribute
+                '.aZo-size',
+                '.attachment-size',
+                '[data-attachment-size]'
             ];
             
             for (const selector of sizeSelectors) {
@@ -477,13 +433,10 @@ function getOpenEmail() {
     }
 }
 
-// Add this function after getOpenEmail() function
-
 function getAllEmailsInThread() {
     try {
         console.log('Detecting all emails in conversation thread...');
         
-        // Use only .adn selector for Gmail email elements
         const emailElements = document.querySelectorAll('.adn');
         console.log(`Found ${emailElements.length} email elements with .adn selector`);
         
@@ -500,10 +453,9 @@ function getAllEmailsInThread() {
         
         console.log(`After filtering: ${validElements.length} valid email elements`);
         
-        // Extract email data from each element
         const emails = validElements.map((element, index) => {
             return extractEmailFromElement(element, index);
-        }).filter(email => email && email.sender !== 'Unknown Sender'); // Filter out invalid emails
+        }).filter(email => email && email.sender !== 'Unknown Sender');
         
         console.log(`Detected ${emails.length} emails in thread:`, emails.map(e => ({ 
             sender: e.sender, 
@@ -523,26 +475,21 @@ function getAllEmailsInThread() {
     }
 }
 
-// Helper function to extract email data from a specific element
 function extractEmailFromElement(element, index) {
     try {
         console.log(`Extracting email data from .adn element ${index}:`, element.textContent?.substring(0, 100));
         
-        // Extract sender from this specific .adn element
         let sender = 'Unknown Sender';
         let senderName = 'Unknown Name';
         
-        // Use .gD selector for sender information
         const senderEl = element.querySelector('.gD');
         if (senderEl) {
-            // Get sender's email
             const email = senderEl.getAttribute('email');
             if (email && email.includes('@') && !email.includes('noreply') && !email.includes('no-reply')) {
                 sender = email;
                 console.log(`Found sender email: ${sender}`);
             }
             
-            // Get sender's full name
             const name = senderEl.getAttribute('name');
             if (name && name.trim()) {
                 senderName = name.trim();
@@ -550,24 +497,20 @@ function extractEmailFromElement(element, index) {
             }
         }
         
-        // Extract date from this specific .adn element
         let date = 'Unknown Date';
         
-        // Use .gH .gK .g3 selector for formatted date
         const dateEl = element.querySelector('.gH .gK .g3');
         if (dateEl && dateEl.textContent.trim()) {
             date = dateEl.textContent.trim();
             console.log(`Found date: ${date}`);
         }
         
-        // Extract subject (should be same for all emails in thread)
         let subject = 'No Subject';
         const subjectEl = document.querySelector('h2[data-thread-perm-id], .hP, .thread-subject');
         if (subjectEl) {
             subject = subjectEl.textContent?.trim() || 'No Subject';
         }
         
-        // Extract body preview from this .adn element using .a3s
         let bodyPreview = 'No content';
         const bodyEl = element.querySelector('.a3s');
         if (bodyEl) {
@@ -575,27 +518,22 @@ function extractEmailFromElement(element, index) {
             bodyPreview = bodyText ? bodyText.substring(0, 100) + '...' : 'No content';
             console.log(`Found body via .a3s:`, bodyText?.substring(0, 200));
         } else {
-            // Fallback to element's text content
             const elementText = element.textContent?.trim() || '';
             if (elementText.length > 50) {
                 bodyPreview = elementText.substring(0, 100) + '...';
             }
         }
         
-        // Extract attachment count from this .adn element using .aZo
         const attachmentContainers = element.querySelectorAll('.aZo');
         const attachmentCount = attachmentContainers.length;
         
         console.log(`Email ${index} has ${attachmentCount} attachments`);
         
-        // Extract attachment details for debugging
         if (attachmentCount > 0) {
             console.log(`Attachment details for email ${index}:`);
             attachmentContainers.forEach((container, attIndex) => {
-                // Get download URL from .aZo element
                 const downloadUrl = container.getAttribute('download_url');
                 
-                // Get filename from .aV3 element
                 const filenameEl = container.querySelector('.aV3');
                 const filename = filenameEl?.textContent?.trim();
                 
@@ -610,12 +548,12 @@ function extractEmailFromElement(element, index) {
         const emailData = {
             index: index,
             sender: sender,
-            senderName: senderName,  // Add sender's full name
+            senderName: senderName,
             date: date,
             subject: subject,
             bodyPreview: bodyPreview,
             attachmentCount: attachmentCount,
-            element: element // Store reference to DOM element for later use
+            element: element
         };
         
         console.log(`Extracted email ${index}:`, emailData);
@@ -627,7 +565,6 @@ function extractEmailFromElement(element, index) {
     }
 }
 
-// Function to get selected email data
 function getSelectedEmailData(selectedIndex) {
     try {
         console.log(`Getting data for selected email index: ${selectedIndex}`);
@@ -640,35 +577,29 @@ function getSelectedEmailData(selectedIndex) {
         const selectedEmail = threadResult.emails[selectedIndex];
         const element = selectedEmail.element;
         
-        // Get full body content from .a3s element, specifically looking for LTR div
         let body = 'No content found';
         const bodyEl = element.querySelector('.a3s');
         if (bodyEl) {
-            // Look for the LTR div within .a3s
             const ltrDiv = bodyEl.querySelector('div[dir="ltr"]');
             if (ltrDiv) {
-                body = ltrDiv.innerHTML; // Use innerHTML to preserve formatting
+                body = ltrDiv.innerHTML;
                 console.log(`Found LTR div content:`, body.substring(0, 200));
             } else {
-                // Fallback to full .a3s content if no LTR div found
                 body = bodyEl.innerHTML;
                 console.log(`No LTR div found, using full .a3s content:`, body.substring(0, 200));
             }
         }
         
-        // Get attachments from this specific .adn element
         const attachmentContainers = element.querySelectorAll('.aZo');
         const attachments = Array.from(attachmentContainers).map((container, index) => {
             let name = 'Unknown Attachment';
             let downloadUrl = null;
             
-            // Get filename from .aV3
             const filenameEl = container.querySelector('.aV3');
             if (filenameEl) {
                 name = filenameEl.textContent?.trim() || 'Unknown Attachment';
             }
             
-            // Get download URL from .aZo element
             downloadUrl = container.getAttribute('download_url');
             
             return { 
@@ -694,13 +625,11 @@ function getSelectedEmailData(selectedIndex) {
     }
 }
 
-// Add a function to download attachments directly using URLs
 async function downloadAttachmentsDirectly(attachments) {
     if (!attachments || attachments.length === 0) {
         return { success: false, error: 'No attachments found' };
     }
     
-    // If no custom folder selected, show folder picker
     if (!currentFolderHandle) {
         console.log('No custom folder selected, showing folder picker...');
         const folderResult = await selectFolder();
@@ -712,7 +641,6 @@ async function downloadAttachmentsDirectly(attachments) {
     try {
         console.log('Starting direct attachment download for', attachments.length, 'attachments');
         
-        // Send to background script for authenticated download
         const response = await chrome.runtime.sendMessage({
             action: 'downloadAttachments',
             emailData: { attachments: attachments }
@@ -732,12 +660,10 @@ async function downloadAttachmentsDirectly(attachments) {
     }
 }
 
-// Add function to download attachments directly to custom folder using blob
 async function downloadAttachmentsToCustomFolder(attachments, customFolderPath) {
     try {
         console.log(`Downloading ${attachments.length} attachments directly to custom folder`);
         
-        // If no custom folder selected, show folder picker
         if (!currentFolderHandle) {
             console.log('No custom folder selected, showing folder picker...');
             const folderResult = await selectFolder();
@@ -749,13 +675,11 @@ async function downloadAttachmentsToCustomFolder(attachments, customFolderPath) 
         let successCount = 0;
         let errorCount = 0;
         
-        // Download each attachment directly to custom folder
         for (const attachment of attachments) {
             if (attachment.downloadUrl) {
                 try {
                     console.log(`Downloading attachment: ${attachment.name}`);
                     
-                    // Clean the URL
                     const cleanedUrl = cleanAttachmentUrl(attachment.downloadUrl);
                     console.log(`Cleaned URL: ${cleanedUrl}`);
                     
@@ -765,7 +689,6 @@ async function downloadAttachmentsToCustomFolder(attachments, customFolderPath) 
                         continue;
                     }
                     
-                    // Fetch the attachment content as blob
                     const response = await fetch(cleanedUrl, {
                         method: 'GET',
                         headers: {
@@ -782,7 +705,6 @@ async function downloadAttachmentsToCustomFolder(attachments, customFolderPath) 
                     const blob = await response.blob();
                     console.log(`Downloaded ${attachment.name}: ${blob.size} bytes`);
                     
-                    // Save to custom folder
                     const saveResult = await saveAttachmentToFolder(attachment, blob);
                     if (saveResult.success) {
                         successCount++;
@@ -818,29 +740,22 @@ async function downloadAttachmentsToCustomFolder(attachments, customFolderPath) 
     }
 }
 
-// Add cleanAttachmentUrl function to content.js
 function cleanAttachmentUrl(url) {
     if (!url) return null;
     
     console.log('Cleaning URL:', url);
     
-    // Remove MIME type and filename prefix: "mimeType:filename:https://..."
-    // This handles cases like:
-    // "image/png:noname:https://..."
-    // "application/pdf:001(02-05-2025).pdf:https://..."
     const urlMatch = url.match(/^[^:]+:[^:]+:(https?:\/\/.+)$/);
     if (urlMatch) {
         url = urlMatch[1];
         console.log('Removed MIME type and filename prefix:', url);
     }
     
-    // Fix double https:// prefix if it exists
     if (url.includes('https://mail.google.com/mail/u/0/https://mail.google.com/mail/u/0')) {
         url = url.replace('https://mail.google.com/mail/u/0/https://mail.google.com/mail/u/0', 'https://mail.google.com/mail/u/0');
         console.log('Fixed double prefix:', url);
     }
     
-    // Ensure it's a valid URL
     if (url.startsWith('http')) {
         console.log('Final cleaned URL:', url);
         return url;
@@ -850,7 +765,6 @@ function cleanAttachmentUrl(url) {
     return null;
 }
 
-// Listen for messages from popup
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     console.log("Content script received message:", message.action, message);
     
@@ -879,41 +793,40 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
             generatePDFDirectly(message.data).then(result => {
                 sendResponse(result);
             });
-            return true; // Keep message channel open for async response
+            return true;
             
         case 'selectFolder':
             selectFolder().then(result => {
                 sendResponse(result);
             });
-            return true; // Keep message channel open for async response
+            return true;
             
         case 'saveAttachmentToFolder':
             saveAttachmentToFolder(message.attachment, message.blob).then(result => {
                 sendResponse(result);
             });
-            return true; // Keep message channel open for async response
+            return true;
             
         case 'downloadAttachmentsDirectly':
             downloadAttachmentsDirectly(message.attachments).then(result => {
                 sendResponse(result);
             });
-            return true; // Keep message channel open for async response
+            return true;
             
         case 'downloadAttachmentsToCustomFolder':
             downloadAttachmentsToCustomFolder(message.attachments, message.customFolderPath).then(result => {
                 sendResponse(result);
             });
-            return true; // Keep message channel open for async response
+            return true;
             
         default:
             console.log('Unknown action:', message.action);
             sendResponse({ error: 'Unknown action' });
     }
     
-    return true; // Keep message channel open
+    return true;
 });
 
-// Utility function to sanitize filename
 function sanitizeFilename(filename) {
     return filename
         .replace(/[<>:"/\\|?*]/g, '_')
@@ -921,27 +834,20 @@ function sanitizeFilename(filename) {
         .substring(0, 50);
 }
 
-// Add this function to content.js to set default Downloads folder
 function setDefaultDownloadsFolder() {
-    // Set default to Downloads folder if no folder is selected
     if (!currentFolderHandle) {
-        // We'll use the browser's default download behavior
-        // The folder selection will be handled by the File System Access API
         console.log('Using default Downloads folder for exports');
         return true;
     }
     return false;
 }
 
-// Update the generatePDFDirectly function to show folder modal when needed
 async function generatePDFDirectly(emailData) {
-    // Prevent multiple PDF generations
     if (isGeneratingPDF) {
         console.error('PDF generation already in progress, ignoring duplicate request');
         return { success: false, error: 'PDF generation already in progress' };
     }
     
-    // If no custom folder selected, show folder picker
     if (!currentFolderHandle) {
         console.log('No custom folder selected, showing folder picker...');
         const folderResult = await selectFolder();
@@ -955,21 +861,18 @@ async function generatePDFDirectly(emailData) {
     try {
         console.log("Generating PDF for:", emailData.subject);
         
-        // Load jsPDF library dynamically
         await loadJsPDFLibrary();
         
-        // Generate PDF using jsPDF
         const pdfBlob = await generatePDFWithJsPDF(emailData);
         
-        // Generate filename with date and time (MM-DD-YYYY_HHMMSS_mmm)
         const now = new Date();
-        const month = String(now.getMonth() + 1).padStart(2, '0'); // MM
-        const day = String(now.getDate()).padStart(2, '0'); // DD
-        const year = now.getFullYear(); // YYYY
-        const hours = String(now.getHours()).padStart(2, '0'); // HH
-        const minutes = String(now.getMinutes()).padStart(2, '0'); // MM
-        const seconds = String(now.getSeconds()).padStart(2, '0'); // SS
-        const milliseconds = String(now.getMilliseconds()).padStart(3, '0'); // mmm
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const day = String(now.getDate()).padStart(2, '0');
+        const year = now.getFullYear();
+        const hours = String(now.getHours()).padStart(2, '0');
+        const minutes = String(now.getMinutes()).padStart(2, '0');
+        const seconds = String(now.getSeconds()).padStart(2, '0');
+        const milliseconds = String(now.getMilliseconds()).padStart(3, '0');
         
         const dateTimeStr = `${month}-${day}-${year}_${hours}${minutes}${seconds}_${milliseconds}`;
         
@@ -990,7 +893,6 @@ async function generatePDFDirectly(emailData) {
     }
 }
 
-// Update the selectFolder function to return full path
 async function selectFolder() {
     try {
         console.log('Opening folder picker...');
@@ -1001,17 +903,13 @@ async function selectFolder() {
         });
         
         if (folderHandle) {
-            currentFolderHandle = folderHandle; // Store the handle internally
+            currentFolderHandle = folderHandle;
             
-            // Get the full path by traversing up the directory tree
             let fullPath = folderHandle.name;
             try {
-                // Try to get the full path by checking the handle's path
-                // Note: This is a simplified approach - in reality, we'd need to traverse up
                 const pathParts = [folderHandle.name];
                 let currentHandle = folderHandle;
                 
-                // Try to get parent directory (this might not work in all browsers)
                 try {
                     while (currentHandle && currentHandle.parent) {
                         currentHandle = currentHandle.parent;
@@ -1020,7 +918,6 @@ async function selectFolder() {
                         }
                     }
                 } catch (e) {
-                    // If we can't traverse up, just use the folder name
                     console.log('Could not get full path, using folder name only');
                 }
                 
@@ -1041,14 +938,10 @@ async function selectFolder() {
     }
 }
 
-// Fix the getFolderStatus function to return folderPath instead of folderName
 function getFolderStatus() {
     if (currentFolderHandle) {
-        // Try to reconstruct the full path
         let fullPath = currentFolderHandle.name;
         try {
-            // This is a simplified approach - in practice, getting full path from FileSystemDirectoryHandle
-            // is limited by browser security. We'll use the folder name for now.
             fullPath = currentFolderHandle.name;
         } catch (error) {
             fullPath = currentFolderHandle.name;
@@ -1056,23 +949,22 @@ function getFolderStatus() {
         
         return {
             success: true,
-            folderPath: fullPath,  // Changed from folderName to folderPath
-            folderName: fullPath   // Keep both for compatibility
+            folderPath: fullPath,
+            folderName: fullPath
         };
     } else {
         return {
-            success: false,  // Changed from true to false when no folder
+            success: false,
             folderPath: null,
             folderName: null
         };
     }
 }
 
-// Add a helper function to generate clean date string
 function getDateString() {
     const now = new Date();
-    const month = String(now.getMonth() + 1).padStart(2, '0'); // MM
-    const day = String(now.getDate()).padStart(2, '0'); // DD
-    const year = now.getFullYear(); // YYYY
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const day = String(now.getDate()).padStart(2, '0');
+    const year = now.getFullYear();
     return `${month}-${day}-${year}`;
 }

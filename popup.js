@@ -1,23 +1,18 @@
-// Erado Gmail Export - Popup Script
 console.log('Erado Gmail Export popup script loaded');
 
-// State
 let currentEmailData = null;
 let threadEmails = [];
 let selectedEmailIndex = 0;
 let selectedFolder = null;
 let isFolderSelected = false;
 
-// DOM elements
 let selectFolderBtn, emailInfo, emailSubject, emailSender, emailDate, emailAttachments,
     emailList, emailItems, detectEmailBtn, exportEmailBtn, exportAttachmentsBtn, 
     exportAllBtn, statusDiv;
 
-// Initialize
 document.addEventListener('DOMContentLoaded', () => {
     console.log('Popup initialized');
     
-    // Initialize DOM elements
     selectFolderBtn = document.getElementById('selectFolder');
     emailInfo = document.getElementById('emailInfo');
     emailSubject = document.getElementById('emailSubject');
@@ -32,18 +27,15 @@ document.addEventListener('DOMContentLoaded', () => {
     exportAllBtn = document.getElementById('exportAll');
     statusDiv = document.getElementById('status');
     
-    // Add event listeners
     selectFolderBtn.addEventListener('click', selectFolder);
     detectEmailBtn.addEventListener('click', detectEmail);
     exportEmailBtn.addEventListener('click', exportEmail);
     exportAttachmentsBtn.addEventListener('click', exportAttachments);
     exportAllBtn.addEventListener('click', exportAll);
     
-    // Check if folder is already selected
     checkFolderStatus();
 });
 
-// Update the checkFolderStatus function to show full path
 async function checkFolderStatus() {
     try {
         const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -67,7 +59,6 @@ async function checkFolderStatus() {
     }
 }
 
-// Update the selectFolder function to show full path
 async function selectFolder() {
     selectFolderBtn.disabled = true;
     showStatus('Selecting folder...', 'info');
@@ -92,7 +83,6 @@ async function selectFolder() {
     selectFolderBtn.disabled = false;
 }
 
-// Update folder button text
 function updateFolderButton() {
     if (isFolderSelected) {
         selectFolderBtn.textContent = 'Change Extract Path';
@@ -101,7 +91,6 @@ function updateFolderButton() {
     }
 }
 
-// Detect email and thread
 async function detectEmail() {
     detectEmailBtn.disabled = true;
     showStatus('Detecting email and thread...', 'info');
@@ -115,7 +104,6 @@ async function detectEmail() {
             return;
         }
         
-        // Detect all emails in thread
         const response = await chrome.tabs.sendMessage(tab.id, { action: 'getAllEmailsInThread' });
         
         if (response && response.success) {
@@ -123,14 +111,12 @@ async function detectEmail() {
             console.log('Thread emails detected:', threadEmails);
             
             if (threadEmails.length === 1) {
-                // Single email - no selection needed
                 currentEmailData = await getSelectedEmailData(0);
                 showEmailInfo(currentEmailData);
                 hideEmailList();
                 enableButtons();
                 showStatus(`Single email detected: ${currentEmailData.sender}`, 'success');
             } else if (threadEmails.length > 1) {
-                // Multiple emails - show selection UI
                 showEmailList(threadEmails);
                 showStatus(`${threadEmails.length} emails found in thread. Please select one.`, 'info');
             } else {
@@ -147,7 +133,6 @@ async function detectEmail() {
     detectEmailBtn.disabled = false;
 }
 
-// Show email list for selection
 function showEmailList(emails) {
     emailItems.innerHTML = '';
     
@@ -172,21 +157,17 @@ function showEmailList(emails) {
     emailList.classList.remove('hidden');
     emailInfo.classList.add('hidden');
     
-    // Select first email by default
     selectEmail(0);
 }
 
-// Hide email list
 function hideEmailList() {
     emailList.classList.add('hidden');
     emailInfo.classList.remove('hidden');
 }
 
-// Select email from list
 async function selectEmail(index) {
     selectedEmailIndex = index;
     
-    // Update UI
     document.querySelectorAll('.email-item').forEach((item, i) => {
         if (i === index) {
             item.classList.add('selected');
@@ -197,13 +178,11 @@ async function selectEmail(index) {
         }
     });
     
-    // Get selected email data
     currentEmailData = await getSelectedEmailData(index);
     showStatus(`Selected email: ${currentEmailData.sender}`, 'success');
     enableButtons();
 }
 
-// Get selected email data
 async function getSelectedEmailData(index) {
     try {
         const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -223,7 +202,6 @@ async function getSelectedEmailData(index) {
     }
 }
 
-// Show email info
 function showEmailInfo(emailData) {
     emailSubject.textContent = emailData.subject;
     emailSender.textContent = emailData.sender;
@@ -231,14 +209,12 @@ function showEmailInfo(emailData) {
     emailAttachments.textContent = `${emailData.attachments ? emailData.attachments.length : 0} attachment(s)`;
 }
 
-// Enable/disable buttons
 function enableButtons() {
     exportEmailBtn.disabled = false;
     exportAttachmentsBtn.disabled = !currentEmailData.attachments || currentEmailData.attachments.length === 0;
     exportAllBtn.disabled = false;
 }
 
-// Update the exportEmail function to show progress notifications
 async function exportEmail() {
     if (!currentEmailData) {
         showStatus('Please detect an email first', 'error');
@@ -258,7 +234,6 @@ async function exportEmail() {
         if (response.success) {
             showStatus(`PDF exported successfully: ${response.filename}`, 'success');
             
-            // Show folder notification after successful export
             setTimeout(async () => {
                 await checkFolderStatus();
                 if (isFolderSelected) {
@@ -276,7 +251,6 @@ async function exportEmail() {
     exportEmailBtn.disabled = false;
 }
 
-// Update the exportAttachments function with better debugging
 async function exportAttachments() {
     if (!currentEmailData) {
         showStatus('Please detect an email first', 'error');
@@ -294,7 +268,6 @@ async function exportAttachments() {
     showStatus('Downloading attachments...', 'info');
     
     try {
-        // First authenticate to ensure we have a token
         console.log('Authenticating...');
         const authResult = await authenticate();
         if (!authResult.success) {
@@ -305,7 +278,6 @@ async function exportAttachments() {
         
         console.log('Authentication successful, starting download...');
         
-        // Try direct download through content script
         const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
         console.log('Sending message to content script...');
         
@@ -319,7 +291,6 @@ async function exportAttachments() {
         if (directResponse.success) {
             showStatus(`Downloaded ${currentEmailData.attachments.length} attachments successfully`, 'success');
             
-            // Show folder notification after successful download
             setTimeout(async () => {
                 await checkFolderStatus();
                 if (isFolderSelected) {
@@ -338,7 +309,6 @@ async function exportAttachments() {
     exportAttachmentsBtn.disabled = false;
 }
 
-// Update the exportAll function to show progress notifications
 async function exportAll() {
     if (!currentEmailData) {
         showStatus('Please detect an email first', 'error');
@@ -349,17 +319,14 @@ async function exportAll() {
     showStatus('Exporting all...', 'info');
     
     try {
-        // Export PDF first
         await exportEmail();
         
-        // Then download attachments if any
         if (currentEmailData.attachments && currentEmailData.attachments.length > 0) {
             await exportAttachments();
         }
         
         showStatus('All exports completed successfully', 'success');
         
-        // Show final folder notification
         setTimeout(async () => {
             await checkFolderStatus();
             if (isFolderSelected) {
@@ -374,12 +341,10 @@ async function exportAll() {
     exportAllBtn.disabled = false;
 }
 
-// Authentication function
 async function authenticate() {
     try {
         const token = await chrome.identity.getAuthToken({ interactive: true });
         if (token) {
-            // Send token to background script
             await chrome.runtime.sendMessage({
                 action: 'setToken',
                 token: token
@@ -394,13 +359,11 @@ async function authenticate() {
     }
 }
 
-// Show status message
 function showStatus(message, type) {
     statusDiv.textContent = message;
     statusDiv.className = `status ${type}`;
     statusDiv.classList.remove('hidden');
     
-    // Auto-hide after 5 seconds for success messages
     if (type === 'success') {
         setTimeout(() => {
             statusDiv.classList.add('hidden');

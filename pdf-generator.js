@@ -1,7 +1,5 @@
-// PDF Generator Content Script
 async function generatePDFFromContent(emailData) {
     try {
-        // Create HTML content
         const htmlContent = `
 <!DOCTYPE html>
 <html>
@@ -113,15 +111,12 @@ async function generatePDFFromContent(emailData) {
 </body>
 </html>`;
 
-        // Use browser's print functionality to generate PDF
         const printWindow = window.open('', '_blank');
         printWindow.document.write(htmlContent);
         printWindow.document.close();
         
-        // Wait for content to load
         await new Promise(resolve => setTimeout(resolve, 1000));
         
-        // Trigger print (which saves as PDF)
         printWindow.print();
         
         return { success: true };
@@ -131,7 +126,6 @@ async function generatePDFFromContent(emailData) {
     }
 }
 
-// Listen for PDF generation requests
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.action === 'generatePDF') {
         generatePDFFromContent(message.emailData)
